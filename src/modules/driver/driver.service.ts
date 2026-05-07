@@ -36,6 +36,7 @@ export class DriverService {
         include: {
           client: { include: { user: true } },
           items: { include: { product: true } },
+          delivery: true,
         },
       }),
     ]);
@@ -146,9 +147,16 @@ export class DriverService {
     return order;
   }
 
-  async getOrders(driverId: string, status?: string, page = 1, limit = 20) {
+  async getOrders(driverId: string, status?: string, page = 1, limit = 20, date?: string) {
     const where: any = { driverId };
     if (status) where.status = status;
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      where.updatedAt = { gte: startOfDay, lte: endOfDay };
+    }
 
     const skip = (page - 1) * limit;
 
@@ -193,20 +201,98 @@ export class DriverService {
     return order;
   }
 
-  async getEarnings(driverId: string, period: string = 'today') {
-    const startDate = new Date();
-    if (period === 'today') {
-      startDate.setHours(0, 0, 0, 0);
-    } else if (period === 'week') {
-      startDate.setDate(startDate.getDate() - 7);
-    } else if (period === 'month') {
-      startDate.setMonth(startDate.getMonth() - 1);
+  async getHomeStats(driverId: string, date: string) {
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const [totalOrders, deliveredOrders, earnings] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          driverId,
+          updatedAt: { gte: startOfDay, lte: endOfDay },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          driverId,
+          status: 'DELIVERED',
+          updatedAt: { gte: startOfDay, lte: endOfDay },
+        },
+      }),
+      this.prisma.driverEarning.aggregate({
+        where: {
+          driverId,
+          date: { gte: startOfDay, lte: endOfDay },
+        },
+        _sum: { amount: true, bonus: true },
+      }),
+    ]);
+
+    return {
+      totalOrders,
+      deliveredOrders,
+      totalRevenue: (earnings._sum.amount || 0) + (earnings._sum.bonus || 0),
+    };
+  }
+
+  async getPaymentStats(driverId: string, startDate: string, endDate: string) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const grouped = await this.prisma.order.groupBy({
+      by: ['paymentMethod'],
+      where: {
+        driverId,
+        status: 'DELIVERED',
+        updatedAt: { gte: start, lte: end },
+      },
+      _sum: { totalAmount: true },
+      _count: { id: true },
+    });
+
+    const cash = grouped.find((g) => g.paymentMethod === 'CASH');
+    const card = grouped.find((g) => g.paymentMethod === 'CARD');
+
+    const cashAmount = cash?._sum.totalAmount || 0;
+    const cardAmount = card?._sum.totalAmount || 0;
+
+    return {
+      cash: { amount: cashAmount, count: cash?._count.id || 0 },
+      card: { amount: cardAmount, count: card?._count.id || 0 },
+      total: { amount: cashAmount + cardAmount, count: (cash?._count.id || 0) + (card?._count.id || 0) },
+    };
+  }
+
+  async getEarnings(driverId: string, period: string = 'today', startDate?: string, endDate?: string) {
+    let dateFilter: any = {};
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateFilter = { gte: start, lte: end };
+    } else {
+      const start = new Date();
+      if (period === 'today') {
+        start.setHours(0, 0, 0, 0);
+      } else if (period === 'week') {
+        start.setDate(start.getDate() - 7);
+      } else if (period === 'month') {
+        start.setMonth(start.getMonth() - 1);
+      }
+      dateFilter = { gte: start };
     }
 
     const earnings = await this.prisma.driverEarning.findMany({
       where: {
         driverId,
-        date: { gte: startDate },
+        date: dateFilter,
       },
       orderBy: { date: 'desc' },
     });

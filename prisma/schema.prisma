@@ -37,6 +37,7 @@ model User {
 model Client {
   id            String           @id @default(uuid())
   userId        String           @unique
+  customerCode  String?          @unique
   addresses     Json?
   loyaltyPoints Int              @default(0)
   tier          ClientTier       @default(BRONZE)

@@ -21,6 +21,13 @@ export class DriverController {
     return this.driverService.getDashboard(driver.id);
   }
 
+  @Get('home')
+  @ApiOperation({ summary: 'Home sahifasi statistikasi (sana bo\'yicha)' })
+  getHomeStats(@CurrentUser('driver') driver: any, @Query('date') date?: string) {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    return this.driverService.getHomeStats(driver.id, targetDate);
+  }
+
   @Post('location')
   @ApiOperation({ summary: 'Lokatsiyani yangilash' })
   updateLocation(@CurrentUser('driver') driver: any, @Body() body: { lat: number; lng: number }) {
@@ -69,12 +76,14 @@ export class DriverController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('date') date?: string,
   ) {
     return this.driverService.getOrders(
       driver.id,
       status,
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 20,
+      date,
     );
   }
 
@@ -84,9 +93,24 @@ export class DriverController {
     return this.driverService.getOrderById(driver.id, orderId);
   }
 
+  @Get('payment-stats')
+  @ApiOperation({ summary: 'To\'lov turi bo\'yicha statistika (sana oralig\'i)' })
+  getPaymentStats(
+    @CurrentUser('driver') driver: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.driverService.getPaymentStats(driver.id, startDate, endDate);
+  }
+
   @Get('earnings')
   @ApiOperation({ summary: 'Daromad tarixi' })
-  getEarnings(@CurrentUser('driver') driver: any, @Query('period') period?: string) {
-    return this.driverService.getEarnings(driver.id, period);
+  getEarnings(
+    @CurrentUser('driver') driver: any,
+    @Query('period') period?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.driverService.getEarnings(driver.id, period, startDate, endDate);
   }
 }

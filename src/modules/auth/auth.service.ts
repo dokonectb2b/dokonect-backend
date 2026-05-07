@@ -43,6 +43,7 @@ export class AuthService {
           region: dto.region,
           lat: dto.lat,
           lng: dto.lng,
+          customerCode: await this.generateCustomerCode(),
         },
       });
     } else if (dto.role === 'DISTRIBUTOR') {
@@ -162,6 +163,14 @@ export class AuthService {
     }
 
     return this.sanitizeUser(user);
+  }
+
+  private async generateCustomerCode(): Promise<string> {
+    while (true) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const existing = await this.prisma.client.findUnique({ where: { customerCode: code } });
+      if (!existing) return code;
+    }
   }
 
   private generateToken(userId: string, role: string): string {
