@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -101,6 +101,10 @@ export class DriverService {
     signature?: string,
     problemReport?: string,
   ) {
+    const existing = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw new NotFoundException('Buyurtma topilmadi');
+    if (existing.driverId !== driverId) throw new ForbiddenException('Bu buyurtma sizga tegishli emas');
+
     const order = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: status as any },
