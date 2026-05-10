@@ -85,11 +85,13 @@ model Distributor {
   debts           Debt[]
   chatRooms       ChatRoom[]
   alerts          ProductAlert[]
+  drivers         Driver[]
 }
 
 model Driver {
   id              String           @id @default(uuid())
   userId          String           @unique
+  distributorId   String?
   vehicleType     String
   vehicleNumber   String
   licenseNumber   String
@@ -104,6 +106,7 @@ model Driver {
   deliveries      Delivery[]
   ratings         DeliveryRating[]
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  distributor     Distributor?     @relation(fields: [distributorId], references: [id], onDelete: SetNull)
   earnings        DriverEarning[]
   locations       DriverLocation[]
   zones           DriverZone[]

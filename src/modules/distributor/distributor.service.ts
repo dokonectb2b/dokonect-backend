@@ -358,9 +358,9 @@ export class DistributorService {
     // Frontend type nomlarini backend nomlariga moslashtirish
     const normalizedType: 'IN' | 'OUT' | 'ADJUSTMENT' =
       type === 'ADD' ? 'IN' :
-      type === 'SUBTRACT' ? 'OUT' :
-      type === 'SET' ? 'ADJUSTMENT' :
-      type as 'IN' | 'OUT' | 'ADJUSTMENT';
+        type === 'SUBTRACT' ? 'OUT' :
+          type === 'SET' ? 'ADJUSTMENT' :
+            type as 'IN' | 'OUT' | 'ADJUSTMENT';
 
     // Mahsulotni topish
     const where: any = { id: productId };
@@ -457,9 +457,15 @@ export class DistributorService {
   }
 
   async getDrivers(distributorId: string | null) {
-    // Get all drivers (for now, return all drivers in the system)
-    // In production, you might want to filter by distributor's region or assigned drivers
+    const where: any = {};
+
+    // Faqat o'sha distribyutorga tegishli haydovchilarni ko'rsatish
+    if (distributorId) {
+      where.distributorId = distributorId;
+    }
+
     const drivers = await this.prisma.driver.findMany({
+      where,
       include: {
         user: true,
         _count: {
@@ -511,13 +517,20 @@ export class DistributorService {
       });
 
       // Create driver profile
+      const driverData: any = {
+        userId: user.id,
+        vehicleType: data.vehicleType || 'Sedan',
+        vehicleNumber: data.plateNumber || '',
+        licenseNumber: data.licenseNumber || '',
+      };
+
+      // Distribyutorga bog'lash
+      if (distributorId) {
+        driverData.distributorId = distributorId;
+      }
+
       const driver = await this.prisma.driver.create({
-        data: {
-          userId: user.id,
-          vehicleType: data.vehicleType || 'Sedan',
-          vehicleNumber: data.plateNumber || '',
-          licenseNumber: data.licenseNumber || '',
-        },
+        data: driverData,
       });
 
       return { success: true, data: { ...driver, user } };
@@ -531,13 +544,20 @@ export class DistributorService {
   }
 
   async updateDriver(driverId: string, distributorId: string, data: any) {
-    const driver = await this.prisma.driver.findUnique({
-      where: { id: driverId },
+    const where: any = { id: driverId };
+
+    // Faqat o'z haydovchisini yangilashi mumkin
+    if (distributorId) {
+      where.distributorId = distributorId;
+    }
+
+    const driver = await this.prisma.driver.findFirst({
+      where,
       include: { user: true },
     });
 
     if (!driver) {
-      throw new NotFoundException('Haydovchi topilmadi');
+      throw new NotFoundException('Haydovchi topilmadi yoki sizga tegishli emas');
     }
 
     // Update user
@@ -606,13 +626,20 @@ export class DistributorService {
   }
 
   async deleteDriver(driverId: string, distributorId: string | null) {
-    const driver = await this.prisma.driver.findUnique({
-      where: { id: driverId },
+    const where: any = { id: driverId };
+
+    // Faqat o'z haydovchisini o'chirishi mumkin
+    if (distributorId) {
+      where.distributorId = distributorId;
+    }
+
+    const driver = await this.prisma.driver.findFirst({
+      where,
       include: { user: true },
     });
 
     if (!driver) {
-      throw new NotFoundException('Haydovchi topilmadi');
+      throw new NotFoundException('Haydovchi topilmadi yoki sizga tegishli emas');
     }
 
     try {
