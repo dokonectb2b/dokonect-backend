@@ -126,11 +126,40 @@ async function main() {
     });
     console.log('✅ Client (Do\'kon egasi) created:', client.phone);
 
+    // 4. Driver (Haydovchi) - +998901234599
+    const driver = await prisma.user.upsert({
+        where: { phone: '+998901234599' },
+        update: {},
+        create: {
+            name: 'Haydovchi Test',
+            phone: '+998901234599',
+            email: 'driver@test.uz',
+            password: hashedPassword,
+            role: 'DRIVER',
+            status: 'ACTIVE',
+        },
+    });
+
+    await prisma.driver.upsert({
+        where: { userId: driver.id },
+        update: {},
+        create: {
+            userId: driver.id,
+            vehicleType: 'Yengil avtomobil',
+            vehicleNumber: '01A123BC',
+            licenseNumber: 'AB1234567',
+            rating: 5.0,
+            isOnline: true,
+        },
+    });
+    console.log('✅ Driver (Haydovchi) created:', driver.phone);
+
     console.log('🎉 Seeding completed!');
     console.log('\n📋 Test hisoblar:');
     console.log('  Admin:        +998900000000 / 123456');
     console.log('  Distribyutor: +998901234567 / 123456');
     console.log('  Do\'kon egasi: +998901234500 / 123456');
+    console.log('  Haydovchi:    +998901234599 / 123456');
 }
 
 main()
