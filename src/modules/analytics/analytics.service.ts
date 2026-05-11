@@ -52,9 +52,9 @@ export class AnalyticsService {
     const clientIds = (clientGroups as any[]).map((c: any) => c.clientId).filter(Boolean);
     const clients = clientIds.length > 0
       ? await this.prisma.client.findMany({
-          where: { id: { in: clientIds } },
-          select: { id: true, storeName: true },
-        })
+        where: { id: { in: clientIds } },
+        select: { id: true, storeName: true },
+      })
       : [];
     const clientMap: Record<string, string> = Object.fromEntries(
       (clients as any[]).map((c: any) => [c.id, c.storeName]),
@@ -73,12 +73,51 @@ export class AnalyticsService {
       return acc;
     }, {});
 
+    // Sales trend for charts
+    const salesTrend = Object.entries(revenueByDay).map(([date, sales]) => ({
+      date,
+      sales,
+      orders: orders.filter(o => o.createdAt.toISOString().split('T')[0] === date).length,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Top products with details
+    const productIds = topProducts.map(p => p.productId);
+    const products = productIds.length > 0
+      ? await this.prisma.product.findMany({
+        where: { id: { in: productIds } },
+        include: { images: { where: { isCover: true }, take: 1 } },
+      })
+      : [];
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    const topProductsWithDetails = topProducts.map(item => ({
+      productId: item.productId,
+      product: productMap[item.productId],
+      quantity: item._sum.quantity || 0,
+      revenue: item._sum.total || 0,
+    }));
+
+    // Order statistics
+    const orderStats = {
+      total: orders.length,
+      delivered: orders.filter(o => o.status === 'DELIVERED').length,
+      cancelled: orders.filter(o => o.status === 'CANCELLED' || o.status === 'REJECTED').length,
+      inTransit: orders.filter(o => o.status === 'IN_TRANSIT' || o.status === 'PICKED').length,
+      new: orders.filter(o => o.status === 'NEW').length,
+    };
+
+    // Average order value
+    const avgOrderValue = orders.length > 0 ? (revenue._sum.totalAmount || 0) / orders.length : 0;
+
     return {
       totalOrders: orders.length,
       totalRevenue: revenue._sum.totalAmount || 0,
+      avgOrderValue,
       revenueByDay,
-      topProducts,
+      salesTrend,
+      topProducts: topProductsWithDetails,
       clientBreakdown,
+      orders: orderStats,
     };
   }
 
@@ -110,7 +149,7 @@ export class AnalyticsService {
       orderBy: { createdAt: 'desc' },
     }) as any[];
 
-    const cashOrders   = orders.filter((o: any) => o.paymentMethod === 'CASH');
+    const cashOrders = orders.filter((o: any) => o.paymentMethod === 'CASH');
     const onlineOrders = orders.filter((o: any) => o.paymentMethod === 'CARD' || o.paymentMethod === 'BANK_TRANSFER');
     const creditOrders = orders.filter((o: any) => o.paymentMethod === 'CREDIT');
     const unpaidOrders = orders.filter((o: any) => o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL');
@@ -118,15 +157,15 @@ export class AnalyticsService {
     const sum = (list: any[]) => list.reduce((acc: number, o: any) => acc + o.totalAmount, 0);
 
     const summary = {
-      totalAmount:  sum(orders),
-      cashTotal:    sum(cashOrders),
-      onlineTotal:  sum(onlineOrders),
-      creditTotal:  sum(creditOrders),
-      unpaidTotal:  sum(unpaidOrders),
-      paidTotal:    sum(orders.filter((o: any) => o.paymentStatus === 'PAID')),
-      cashCount:    cashOrders.length,
-      onlineCount:  onlineOrders.length,
-      creditCount:  creditOrders.length,
+      totalAmount: sum(orders),
+      cashTotal: sum(cashOrders),
+      onlineTotal: sum(onlineOrders),
+      creditTotal: sum(creditOrders),
+      unpaidTotal: sum(unpaidOrders),
+      paidTotal: sum(orders.filter((o: any) => o.paymentStatus === 'PAID')),
+      cashCount: cashOrders.length,
+      onlineCount: onlineOrders.length,
+      creditCount: creditOrders.length,
     };
 
     // Group cash by driver
@@ -139,7 +178,7 @@ export class AnalyticsService {
       }
       const entry = driverMap.get(key);
       entry.totalCollected += order.totalAmount;
-      entry.ordersCount    += 1;
+      entry.ordersCount += 1;
       entry.collections.push({
         orderId: order.id,
         storeName: order.client?.storeName || "Noma'lum do'kon",
