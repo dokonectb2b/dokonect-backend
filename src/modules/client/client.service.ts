@@ -4,7 +4,177 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ClientService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
+
+  async getClientById(clientId: string) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            avatar: true,
+            role: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+        orders: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+          },
+        },
+        debts: {
+          where: { status: { not: 'PAID' } },
+          select: {
+            id: true,
+            originalAmount: true,
+            paidAmount: true,
+            remainingAmount: true,
+            status: true,
+            dueDate: true,
+          },
+        },
+        storeLinks: {
+          include: {
+            distributor: {
+              select: {
+                id: true,
+                companyName: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Client topilmadi');
+    }
+
+    // Calculate statistics
+    const [totalOrders, totalSpent, pendingDebts] = await Promise.all([
+      this.prisma.order.count({ where: { clientId } }),
+      this.prisma.order.aggregate({
+        where: { clientId, status: 'DELIVERED' },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.debt.aggregate({
+        where: { clientId, status: { not: 'PAID' } },
+        _sum: { remainingAmount: true },
+      }),
+    ]);
+
+    return {
+      ...client,
+      statistics: {
+        totalOrders,
+        totalSpent: totalSpent._sum.totalAmount || 0,
+        pendingDebts: pendingDebts._sum.remainingAmount || 0,
+      },
+    };
+  }
+
+  async getClientByCustomerCode(customerCode: string) {
+    const client = await this.prisma.client.findUnique({
+      where: { customerCode },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            avatar: true,
+            role: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+        orders: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+            distributor: {
+              select: {
+                id: true,
+                companyName: true,
+              },
+            },
+          },
+        },
+        debts: {
+          where: { status: { not: 'PAID' } },
+          select: {
+            id: true,
+            originalAmount: true,
+            paidAmount: true,
+            remainingAmount: true,
+            status: true,
+            dueDate: true,
+            distributor: {
+              select: {
+                id: true,
+                companyName: true,
+              },
+            },
+          },
+        },
+        storeLinks: {
+          include: {
+            distributor: {
+              select: {
+                id: true,
+                companyName: true,
+                phone: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      throw new NotFoundException(`Customer code ${customerCode} topilmadi`);
+    }
+
+    // Calculate statistics
+    const [totalOrders, totalSpent, pendingDebts] = await Promise.all([
+      this.prisma.order.count({ where: { clientId: client.id } }),
+      this.prisma.order.aggregate({
+        where: { clientId: client.id, status: 'DELIVERED' },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.debt.aggregate({
+        where: { clientId: client.id, status: { not: 'PAID' } },
+        _sum: { remainingAmount: true },
+      }),
+    ]);
+
+    return {
+      ...client,
+      statistics: {
+        totalOrders,
+        totalSpent: totalSpent._sum.totalAmount || 0,
+        pendingDebts: pendingDebts._sum.remainingAmount || 0,
+      },
+    };
+  }
 
   async updateProfile(userId: string, data: any) {
     const client = await this.prisma.client.findUnique({ where: { userId } });
@@ -15,7 +185,7 @@ export class ClientService {
     });
     const updated = await this.prisma.client.update({
       where: { userId },
-      data: { storeName: data.name, ...( data.address ? { addresses: { main: data.address } } : {} ) },
+      data: { storeName: data.name, ...(data.address ? { addresses: { main: data.address } } : {}) },
       include: { user: true },
     });
     return { success: true, data: updated };

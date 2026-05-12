@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class DriverService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async getDashboard(driverId: string) {
     const today = new Date();
@@ -151,15 +151,34 @@ export class DriverService {
     return order;
   }
 
-  async getOrders(driverId: string, status?: string, page = 1, limit = 20, date?: string) {
+  async getOrders(
+    driverId: string,
+    status?: string,
+    page = 1,
+    limit = 20,
+    date?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
     const where: any = { driverId };
+
+    // Status filter
     if (status) where.status = status;
-    if (date) {
+
+    // Date range filter (priority)
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt = { gte: start, lte: end };
+    } else if (date) {
+      // Single date filter (fallback)
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
-      where.updatedAt = { gte: startOfDay, lte: endOfDay };
+      where.createdAt = { gte: startOfDay, lte: endOfDay };
     }
 
     const skip = (page - 1) * limit;
@@ -269,6 +288,228 @@ export class DriverService {
       cash: { amount: cashAmount, count: cash?._count.id || 0 },
       card: { amount: cardAmount, count: card?._count.id || 0 },
       total: { amount: cashAmount + cardAmount, count: (cash?._count.id || 0) + (card?._count.id || 0) },
+    };
+  }
+
+  async getCollections(driverId: string, startDate: string, endDate: string) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Barcha yetkazilgan buyurtmalarni olish
+    const orders = await this.prisma.order.findMany({
+      where: {
+        driverId,
+        status: 'DELIVERED',
+        updatedAt: { gte: start, lte: end },
+      },
+      include: {
+        client: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        distributor: {
+          select: {
+            companyName: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // Mijoz bo'yicha guruhlash
+    const collectionsByClient = new Map<string, any>();
+
+    for (const order of orders) {
+      const clientId = order.clientId;
+      const clientName = order.client?.user?.name || order.client?.storeName || 'Noma\'lum';
+      const customerCode = order.client?.customerCode || 'N/A';
+      const phone = order.client?.user?.phone || 'N/A';
+
+      if (!collectionsByClient.has(clientId)) {
+        collectionsByClient.set(clientId, {
+          clientId,
+          clientName,
+          customerCode,
+          phone,
+          storeName: order.client?.storeName,
+          totalAmount: 0,
+          cashAmount: 0,
+          cardAmount: 0,
+          creditAmount: 0,
+          bankTransferAmount: 0,
+          totalOrders: 0,
+          cashOrders: 0,
+          cardOrders: 0,
+          creditOrders: 0,
+          bankTransferOrders: 0,
+          orders: [],
+        });
+      }
+
+      const clientData = collectionsByClient.get(clientId);
+      clientData.totalAmount += order.totalAmount;
+      clientData.totalOrders += 1;
+
+      // To'lov turi bo'yicha
+      if (order.paymentMethod === 'CASH') {
+        clientData.cashAmount += order.totalAmount;
+        clientData.cashOrders += 1;
+      } else if (order.paymentMethod === 'CARD') {
+        clientData.cardAmount += order.totalAmount;
+        clientData.cardOrders += 1;
+      } else if (order.paymentMethod === 'CREDIT') {
+        clientData.creditAmount += order.totalAmount;
+        clientData.creditOrders += 1;
+      } else if (order.paymentMethod === 'BANK_TRANSFER') {
+        clientData.bankTransferAmount += order.totalAmount;
+        clientData.bankTransferOrders += 1;
+      }
+
+      // Buyurtma tafsilotlari
+      clientData.orders.push({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        deliveredAt: order.updatedAt,
+        distributor: order.distributor?.companyName,
+      });
+    }
+
+    // Map dan array ga o'tkazish va saralash
+    const collections = Array.from(collectionsByClient.values()).sort(
+      (a, b) => b.totalAmount - a.totalAmount
+    );
+
+    // Umumiy statistika
+    const summary = {
+      totalClients: collections.length,
+      totalOrders: orders.length,
+      totalAmount: orders.reduce((sum, o) => sum + o.totalAmount, 0),
+      cashAmount: orders.filter(o => o.paymentMethod === 'CASH').reduce((sum, o) => sum + o.totalAmount, 0),
+      cardAmount: orders.filter(o => o.paymentMethod === 'CARD').reduce((sum, o) => sum + o.totalAmount, 0),
+      creditAmount: orders.filter(o => o.paymentMethod === 'CREDIT').reduce((sum, o) => sum + o.totalAmount, 0),
+      bankTransferAmount: orders.filter(o => o.paymentMethod === 'BANK_TRANSFER').reduce((sum, o) => sum + o.totalAmount, 0),
+      cashOrders: orders.filter(o => o.paymentMethod === 'CASH').length,
+      cardOrders: orders.filter(o => o.paymentMethod === 'CARD').length,
+      creditOrders: orders.filter(o => o.paymentMethod === 'CREDIT').length,
+      bankTransferOrders: orders.filter(o => o.paymentMethod === 'BANK_TRANSFER').length,
+    };
+
+    return {
+      summary,
+      collections,
+      period: {
+        startDate,
+        endDate,
+      },
+    };
+  }
+
+  async getStatistics(driverId: string, startDate: string, endDate: string) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Jami biriktirilgan buyurtmalar (ASSIGNED va undan keyingi statuslar)
+    const assignedOrders = await this.prisma.order.findMany({
+      where: {
+        driverId,
+        createdAt: { gte: start, lte: end },
+        status: { in: ['ASSIGNED', 'PICKED', 'IN_TRANSIT', 'DELIVERED', 'RETURNED'] },
+      },
+      select: {
+        id: true,
+        status: true,
+        totalAmount: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // Yetkazilgan buyurtmalar
+    const deliveredOrders = assignedOrders.filter(o => o.status === 'DELIVERED');
+
+    // Qabul qilingan summa (faqat yetkazilgan va to'langan)
+    const collectedAmount = deliveredOrders.reduce((sum, order) => {
+      // Naqd va karta to'lovlar darhol qabul qilinadi
+      if (order.paymentMethod === 'CASH' || order.paymentMethod === 'CARD') {
+        return sum + order.totalAmount;
+      }
+      // Kredit va bank o'tkazmasi keyinroq to'lanadi
+      return sum;
+    }, 0);
+
+    // To'lov turlari bo'yicha
+    const cashOrders = deliveredOrders.filter(o => o.paymentMethod === 'CASH');
+    const cardOrders = deliveredOrders.filter(o => o.paymentMethod === 'CARD');
+    const creditOrders = deliveredOrders.filter(o => o.paymentMethod === 'CREDIT');
+    const bankTransferOrders = deliveredOrders.filter(o => o.paymentMethod === 'BANK_TRANSFER');
+
+    const cashAmount = cashOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const cardAmount = cardOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const creditAmount = creditOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const bankTransferAmount = bankTransferOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+    // Status bo'yicha
+    const statusCounts = {
+      assigned: assignedOrders.filter(o => o.status === 'ASSIGNED').length,
+      picked: assignedOrders.filter(o => o.status === 'PICKED').length,
+      inTransit: assignedOrders.filter(o => o.status === 'IN_TRANSIT').length,
+      delivered: deliveredOrders.length,
+      returned: assignedOrders.filter(o => o.status === 'RETURNED').length,
+    };
+
+    return {
+      period: {
+        startDate,
+        endDate,
+      },
+      summary: {
+        totalAssigned: assignedOrders.length,
+        totalDelivered: deliveredOrders.length,
+        totalCollected: collectedAmount,
+        deliveryRate: assignedOrders.length > 0
+          ? ((deliveredOrders.length / assignedOrders.length) * 100).toFixed(2) + '%'
+          : '0%',
+      },
+      byStatus: statusCounts,
+      byPaymentMethod: {
+        cash: {
+          count: cashOrders.length,
+          amount: cashAmount,
+        },
+        card: {
+          count: cardOrders.length,
+          amount: cardAmount,
+        },
+        credit: {
+          count: creditOrders.length,
+          amount: creditAmount,
+        },
+        bankTransfer: {
+          count: bankTransferOrders.length,
+          amount: bankTransferAmount,
+        },
+      },
+      details: {
+        totalOrdersAmount: deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0),
+        averageOrderAmount: deliveredOrders.length > 0
+          ? (deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0) / deliveredOrders.length).toFixed(2)
+          : 0,
+      },
     };
   }
 

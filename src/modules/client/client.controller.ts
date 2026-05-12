@@ -13,8 +13,27 @@ import { Role } from '@prisma/client';
 @Roles(Role.CLIENT)
 @ApiBearerAuth()
 export class ClientController {
-  constructor(private clientService: ClientService) {}
+  constructor(private clientService: ClientService) { }
 
+  @Get('profile')
+  @ApiOperation({ summary: 'Client profili' })
+  getClientProfile(@CurrentUser('client') client: any) {
+    return this.clientService.getClientById(client.id);
+  }
+
+  @Get(':clientId')
+  @Roles(Role.DISTRIBUTOR, Role.ADMIN)
+  @ApiOperation({ summary: 'Client ma\'lumotlari (ID bo\'yicha)' })
+  getClientById(@Param('clientId') clientId: string) {
+    return this.clientService.getClientById(clientId);
+  }
+
+  @Get('code/:customerCode')
+  @Roles(Role.DISTRIBUTOR, Role.ADMIN)
+  @ApiOperation({ summary: 'Client ma\'lumotlari (Customer Code bo\'yicha)' })
+  getClientByCustomerCode(@Param('customerCode') customerCode: string) {
+    return this.clientService.getClientByCustomerCode(customerCode);
+  }
   @Patch('profile')
   @ApiOperation({ summary: 'Profil yangilash' })
   updateProfile(@CurrentUser() user: any, @Body() data: any) {

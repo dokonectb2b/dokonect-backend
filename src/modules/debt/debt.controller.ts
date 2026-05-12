@@ -58,6 +58,17 @@ export class DebtController {
     return this.debtService.payDebt(debtId, amount);
   }
 
+  @Post('client/:clientId/pay')
+  @UseGuards(RolesGuard)
+  @Roles(Role.DISTRIBUTOR, Role.ADMIN)
+  @ApiOperation({ summary: "Client uchun to'lov qabul qilish (Customer ID bo'yicha)" })
+  acceptPaymentForClient(
+    @Param('clientId') clientId: string,
+    @Body() body: { amount: number; debtId?: string; note?: string }
+  ) {
+    return this.debtService.acceptPaymentForClient(clientId, body.amount, body.debtId, body.note);
+  }
+
   @Get('summary')
   @UseGuards(RolesGuard)
   @Roles(Role.CLIENT)

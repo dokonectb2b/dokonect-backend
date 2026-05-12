@@ -13,7 +13,7 @@ import { Role } from '@prisma/client';
 @Roles(Role.DRIVER)
 @ApiBearerAuth()
 export class DriverController {
-  constructor(private driverService: DriverService) {}
+  constructor(private driverService: DriverService) { }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Driver dashboard' })
@@ -77,6 +77,8 @@ export class DriverController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('date') date?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.driverService.getOrders(
       driver.id,
@@ -84,6 +86,8 @@ export class DriverController {
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 20,
       date,
+      startDate,
+      endDate,
     );
   }
 
@@ -101,6 +105,26 @@ export class DriverController {
     @Query('endDate') endDate: string,
   ) {
     return this.driverService.getPaymentStats(driver.id, startDate, endDate);
+  }
+
+  @Get('collections')
+  @ApiOperation({ summary: 'Kimdan qancha va qanday shaklda to\'lov qabul qilgani (batafsil)' })
+  getCollections(
+    @CurrentUser('driver') driver: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.driverService.getCollections(driver.id, startDate, endDate);
+  }
+
+  @Get('statistics')
+  @ApiOperation({ summary: 'Sana oralig\'ida driver statistikasi (biriktirilgan, yetkazilgan, qabul qilingan summa)' })
+  getStatistics(
+    @CurrentUser('driver') driver: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.driverService.getStatistics(driver.id, startDate, endDate);
   }
 
   @Get('earnings')
