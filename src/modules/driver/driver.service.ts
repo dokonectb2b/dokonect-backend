@@ -71,6 +71,15 @@ export class DriverService {
   }
 
   async acceptOrder(driverId: string, orderId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+    if (!driver) throw new NotFoundException('Driver topilmadi');
+
+    const existing = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw new NotFoundException('Buyurtma topilmadi');
+    if (existing.distributorId !== driver.distributorId) {
+      throw new ForbiddenException('Bu buyurtma sizning distribyutoringizga tegishli emas');
+    }
+
     const order = await this.prisma.order.update({
       where: { id: orderId },
       data: {
@@ -130,15 +139,16 @@ export class DriverService {
         });
       }
 
-      // Calculate earnings
-      const baseAmount = order.totalAmount * 0.1; // 10% commission
-      await this.prisma.driverEarning.create({
-        data: {
-          driverId,
-          orderId,
-          amount: baseAmount,
-        },
+      // Calculate earnings — only once per order
+      const existingEarning = await this.prisma.driverEarning.findFirst({
+        where: { orderId, driverId },
       });
+      if (!existingEarning) {
+        const baseAmount = order.totalAmount * 0.1; // 10% commission
+        await this.prisma.driverEarning.create({
+          data: { driverId, orderId, amount: baseAmount },
+        });
+      }
     }
 
     if (problemReport && order.delivery) {
@@ -220,7 +230,7 @@ export class DriverService {
       },
     });
 
-    if (!order) throw new Error('Buyurtma topilmadi');
+    if (!order) throw new NotFoundException('Buyurtma topilmadi');
     return order;
   }
 
@@ -235,14 +245,24 @@ export class DriverService {
       this.prisma.order.count({
         where: {
           driverId,
-          updatedAt: { gte: startOfDay, lte: endOfDay },
+          statusHistory: {
+            some: {
+              status: { in: ['ASSIGNED', 'PICKED'] },
+              timestamp: { gte: startOfDay, lte: endOfDay },
+            },
+          },
         },
       }),
       this.prisma.order.count({
         where: {
           driverId,
           status: 'DELIVERED',
-          updatedAt: { gte: startOfDay, lte: endOfDay },
+          statusHistory: {
+            some: {
+              status: 'DELIVERED',
+              timestamp: { gte: startOfDay, lte: endOfDay },
+            },
+          },
         },
       }),
       this.prisma.driverEarning.aggregate({

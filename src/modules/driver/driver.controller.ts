@@ -101,30 +101,33 @@ export class DriverController {
   @ApiOperation({ summary: 'To\'lov turi bo\'yicha statistika (sana oralig\'i)' })
   getPaymentStats(
     @CurrentUser('driver') driver: any,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.driverService.getPaymentStats(driver.id, startDate, endDate);
+    const today = new Date().toISOString().split('T')[0];
+    return this.driverService.getPaymentStats(driver.id, startDate || today, endDate || today);
   }
 
   @Get('collections')
   @ApiOperation({ summary: 'Kimdan qancha va qanday shaklda to\'lov qabul qilgani (batafsil)' })
   getCollections(
     @CurrentUser('driver') driver: any,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.driverService.getCollections(driver.id, startDate, endDate);
+    const today = new Date().toISOString().split('T')[0];
+    return this.driverService.getCollections(driver.id, startDate || today, endDate || today);
   }
 
   @Get('statistics')
   @ApiOperation({ summary: 'Sana oralig\'ida driver statistikasi (biriktirilgan, yetkazilgan, qabul qilingan summa)' })
   getStatistics(
     @CurrentUser('driver') driver: any,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.driverService.getStatistics(driver.id, startDate, endDate);
+    const today = new Date().toISOString().split('T')[0];
+    return this.driverService.getStatistics(driver.id, startDate || today, endDate || today);
   }
 
   @Get('earnings')

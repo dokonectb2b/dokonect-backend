@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { ProductAnalyticsService } from './product-analytics.service';
@@ -81,14 +81,8 @@ export class ProductController {
     try {
       let distId = user.distributor?.id || distributorId;
 
-      // Agar admin va distributorId yo'q bo'lsa, birinchi distributorni olish
-      if (!distId && user.role === 'ADMIN') {
-        const firstDist = await this.prisma.distributor.findFirst();
-        distId = firstDist?.id;
-      }
-
       if (!distId) {
-        throw new Error('distributorId kerak');
+        throw new BadRequestException('distributorId query parametri majburiy');
       }
       return this.productService.create(distId, dto);
     } catch (error: any) {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
 import { OrderStatus } from '@prisma/client';
@@ -244,7 +244,7 @@ export class OrderService {
     if (!order) throw new NotFoundException('Buyurtma topilmadi');
 
     if (role === 'CLIENT' && order.client?.userId !== userId) {
-      throw new BadRequestException("Ruxsat yo'q");
+      throw new ForbiddenException("Ruxsat yo'q");
     }
 
     return order;
@@ -304,7 +304,7 @@ export class OrderService {
 
     // Check access rights
     if (role === 'CLIENT' && order.client?.userId !== userId) {
-      throw new BadRequestException("Ruxsat yo'q");
+      throw new ForbiddenException("Ruxsat yo'q");
     }
     // Distributor check skipped (userId not in select)
 
