@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ClientService } from './client.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -15,17 +15,93 @@ import { Role } from '@prisma/client';
 export class ClientController {
   constructor(private clientService: ClientService) { }
 
+  // ── Statik routelar birinchi (`:clientId` dinamik parametrdan OLDIN) ──────
+
   @Get('profile')
   @ApiOperation({ summary: 'Client profili' })
   getClientProfile(@CurrentUser('client') client: any) {
     return this.clientService.getClientById(client.id);
   }
 
-  @Get(':clientId')
-  @Roles(Role.DISTRIBUTOR, Role.ADMIN)
-  @ApiOperation({ summary: 'Client ma\'lumotlari (ID bo\'yicha)' })
-  getClientById(@Param('clientId') clientId: string) {
-    return this.clientService.getClientById(clientId);
+  @Patch('profile')
+  @ApiOperation({ summary: 'Profil yangilash' })
+  updateProfile(@CurrentUser() user: any, @Body() data: any) {
+    return this.clientService.updateProfile(user.id, data);
+  }
+
+  @Get('dashboard')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: 'Client dashboard' })
+  getDashboard(@CurrentUser('client') client: any) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getDashboard(client.id);
+  }
+
+  @Get('products')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: "Mahsulotlar ro'yxati" })
+  getProducts(@CurrentUser('client') client: any, @Query() query: any) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getProducts(client.id, query);
+  }
+
+  @Get('distributors')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: "Distribyutorlar ro'yxati" })
+  getDistributors(
+    @CurrentUser('client') client: any,
+    @Query('region') region?: string,
+    @Query('search') search?: string,
+  ) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getDistributors(client.id, region, search);
+  }
+
+  @Get('distributors/:distributorId')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: "Distribyutor tafsilotlari" })
+  getDistributorById(
+    @Param('distributorId') distributorId: string,
+    @CurrentUser('client') client: any,
+  ) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getDistributorById(client.id, distributorId);
+  }
+
+  @Get('finance')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: "Moliyaviy ma'lumotlar" })
+  getFinanceSummary(@CurrentUser('client') client: any) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getFinanceSummary(client.id);
+  }
+
+  @Get('orders/tracking/:orderId')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: 'Buyurtma tracking' })
+  getOrderTracking(@Param('orderId') orderId: string, @CurrentUser('client') client: any) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getOrderTracking(orderId, client.id);
+  }
+
+  @Get('orders/stats')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: 'Buyurtma statistikasi' })
+  getOrderStats(@CurrentUser('client') client: any) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.getOrderStats(client.id);
+  }
+
+  @Post('orders/:orderId/rate')
+  @Roles(Role.CLIENT, Role.ADMIN)
+  @ApiOperation({ summary: 'Yetkazib beholash' })
+  rateDelivery(
+    @Param('orderId') orderId: string,
+    @CurrentUser('client') client: any,
+    @Body() body: { rating: number; comment?: string },
+  ) {
+    if (!client?.id) throw new NotFoundException('Client profili topilmadi');
+    return this.clientService.rateDelivery(orderId, client.id, body.rating, body.comment);
   }
 
   @Get('code/:customerCode')
@@ -34,68 +110,13 @@ export class ClientController {
   getClientByCustomerCode(@Param('customerCode') customerCode: string) {
     return this.clientService.getClientByCustomerCode(customerCode);
   }
-  @Patch('profile')
-  @ApiOperation({ summary: 'Profil yangilash' })
-  updateProfile(@CurrentUser() user: any, @Body() data: any) {
-    return this.clientService.updateProfile(user.id, data);
-  }
 
-  @Get('dashboard')
-  @ApiOperation({ summary: 'Client dashboard' })
-  getDashboard(@CurrentUser('client') client: any) {
-    return this.clientService.getDashboard(client.id);
-  }
+  // ── Dinamik route — barcha statik routelardan KEYIN ───────────────────────
 
-  @Get('products')
-  @ApiOperation({ summary: "Mahsulotlar ro'yxati" })
-  getProducts(@CurrentUser('client') client: any, @Query() query: any) {
-    return this.clientService.getProducts(client.id, query);
-  }
-
-  @Get('distributors')
-  @ApiOperation({ summary: "Distribyutorlar ro'yxati" })
-  getDistributors(
-    @CurrentUser('client') client: any,
-    @Query('region') region?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.clientService.getDistributors(client.id, region, search);
-  }
-
-  @Get('distributors/:distributorId')
-  @ApiOperation({ summary: "Distribyutor tafsilotlari" })
-  getDistributorById(
-    @Param('distributorId') distributorId: string,
-    @CurrentUser('client') client: any,
-  ) {
-    return this.clientService.getDistributorById(client.id, distributorId);
-  }
-
-  @Get('finance')
-  @ApiOperation({ summary: "Moliyaviy ma'lumotlar" })
-  getFinanceSummary(@CurrentUser('client') client: any) {
-    return this.clientService.getFinanceSummary(client.id);
-  }
-
-  @Get('orders/tracking/:orderId')
-  @ApiOperation({ summary: 'Buyurtma tracking' })
-  getOrderTracking(@Param('orderId') orderId: string, @CurrentUser('client') client: any) {
-    return this.clientService.getOrderTracking(orderId, client.id);
-  }
-
-  @Get('orders/stats')
-  @ApiOperation({ summary: 'Buyurtma statistikasi' })
-  getOrderStats(@CurrentUser('client') client: any) {
-    return this.clientService.getOrderStats(client.id);
-  }
-
-  @Post('orders/:orderId/rate')
-  @ApiOperation({ summary: 'Yetkazib berishni baholash' })
-  rateDelivery(
-    @Param('orderId') orderId: string,
-    @CurrentUser('client') client: any,
-    @Body() body: { rating: number; comment?: string },
-  ) {
-    return this.clientService.rateDelivery(orderId, client.id, body.rating, body.comment);
+  @Get(':clientId')
+  @Roles(Role.DISTRIBUTOR, Role.ADMIN)
+  @ApiOperation({ summary: 'Client ma\'lumotlari (ID bo\'yicha)' })
+  getClientById(@Param('clientId') clientId: string) {
+    return this.clientService.getClientById(clientId);
   }
 }

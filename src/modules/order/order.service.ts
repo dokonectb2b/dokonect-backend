@@ -213,6 +213,43 @@ export class OrderService {
     });
   }
 
+  async findByOrderNumber(orderNumber: number, userId: string, role: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNumber },
+      include: {
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+          },
+        },
+        client: {
+          include: {
+            user: { select: { name: true, phone: true } },
+          },
+        },
+        distributor: {
+          select: { companyName: true, phone: true, address: true },
+        },
+        driver: {
+          include: {
+            user: { select: { name: true, phone: true } },
+          },
+        },
+        statusHistory: { orderBy: { timestamp: 'desc' } },
+        delivery: true,
+      },
+    });
+
+    if (!order) throw new NotFoundException('Buyurtma topilmadi');
+
+    if (role === 'CLIENT' && order.client?.userId !== userId) {
+      throw new BadRequestException("Ruxsat yo'q");
+    }
+
+    return order;
+  }
+
   async findOne(id: string, userId: string, role: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -266,7 +303,7 @@ export class OrderService {
     }
 
     // Check access rights
-    if (role === 'CLIENT' && order.client.userId !== userId) {
+    if (role === 'CLIENT' && order.client?.userId !== userId) {
       throw new BadRequestException("Ruxsat yo'q");
     }
     // Distributor check skipped (userId not in select)

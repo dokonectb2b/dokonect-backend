@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
@@ -56,6 +56,12 @@ export class OrderController {
 
     console.error('❌ Unknown role or no data:', user.role);
     return [];
+  }
+
+  @Get('number/:orderNumber')
+  @ApiOperation({ summary: 'Buyurtma tafsiloti (orderNumber bo\'yicha)' })
+  findByOrderNumber(@Param('orderNumber', ParseIntPipe) orderNumber: number, @CurrentUser() user: any) {
+    return this.orderService.findByOrderNumber(orderNumber, user.id, user.role);
   }
 
   @Get(':id')

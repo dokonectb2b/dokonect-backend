@@ -267,27 +267,30 @@ export class DriverService {
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    const grouped = await this.prisma.order.groupBy({
-      by: ['paymentMethod'],
+    const orders = await this.prisma.order.findMany({
       where: {
         driverId,
         status: 'DELIVERED',
-        updatedAt: { gte: start, lte: end },
+        statusHistory: {
+          some: {
+            status: 'DELIVERED',
+            timestamp: { gte: start, lte: end },
+          },
+        },
       },
-      _sum: { totalAmount: true },
-      _count: { id: true },
+      select: { paymentMethod: true, totalAmount: true },
     });
 
-    const cash = grouped.find((g) => g.paymentMethod === 'CASH');
-    const card = grouped.find((g) => g.paymentMethod === 'CARD');
+    const cash = orders.filter((o) => o.paymentMethod === 'CASH');
+    const card = orders.filter((o) => o.paymentMethod === 'CARD');
 
-    const cashAmount = cash?._sum.totalAmount || 0;
-    const cardAmount = card?._sum.totalAmount || 0;
+    const cashAmount = cash.reduce((s, o) => s + o.totalAmount, 0);
+    const cardAmount = card.reduce((s, o) => s + o.totalAmount, 0);
 
     return {
-      cash: { amount: cashAmount, count: cash?._count.id || 0 },
-      card: { amount: cardAmount, count: card?._count.id || 0 },
-      total: { amount: cashAmount + cardAmount, count: (cash?._count.id || 0) + (card?._count.id || 0) },
+      cash: { amount: cashAmount, count: cash.length },
+      card: { amount: cardAmount, count: card.length },
+      total: { amount: cashAmount + cardAmount, count: cash.length + card.length },
     };
   }
 
@@ -302,7 +305,12 @@ export class DriverService {
       where: {
         driverId,
         status: 'DELIVERED',
-        updatedAt: { gte: start, lte: end },
+        statusHistory: {
+          some: {
+            status: 'DELIVERED',
+            timestamp: { gte: start, lte: end },
+          },
+        },
       },
       include: {
         client: {
@@ -319,6 +327,11 @@ export class DriverService {
           select: {
             companyName: true,
           },
+        },
+        statusHistory: {
+          where: { status: 'DELIVERED' },
+          orderBy: { timestamp: 'desc' },
+          take: 1,
         },
       },
       orderBy: { updatedAt: 'desc' },
@@ -380,7 +393,7 @@ export class DriverService {
         amount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
-        deliveredAt: order.updatedAt,
+        deliveredAt: order.statusHistory?.[0]?.timestamp ?? order.updatedAt,
         distributor: order.distributor?.companyName,
       });
     }
@@ -425,8 +438,13 @@ export class DriverService {
     const assignedOrders = await this.prisma.order.findMany({
       where: {
         driverId,
-        createdAt: { gte: start, lte: end },
         status: { in: ['ASSIGNED', 'PICKED', 'IN_TRANSIT', 'DELIVERED', 'RETURNED'] },
+        statusHistory: {
+          some: {
+            status: 'ASSIGNED',
+            timestamp: { gte: start, lte: end },
+          },
+        },
       },
       select: {
         id: true,

@@ -1,6 +1,6 @@
 import { IsString, IsNumber, IsOptional, IsEnum, IsArray, ValidateNested } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus, DiscountType } from '@prisma/client';
 
 class ProductVariantDto {
@@ -105,7 +105,8 @@ export class CreateProductDto {
   variants?: ProductVariantDto[];
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  initialStock?: string;
+  @Type(() => Number)
+  initialStock?: number;
 }
