@@ -22,8 +22,8 @@ export class AdminController {
 
   @Get('orders')
   @ApiOperation({ summary: 'Barcha buyurtmalar' })
-  getRecentOrders(@Query('status') status?: string) {
-    return this.adminService.getRecentOrders(status);
+  getRecentOrders(@Query('status') status?: string, @Query('search') search?: string) {
+    return this.adminService.getRecentOrders(status, search);
   }
 
   @Get('drivers/active')

@@ -84,12 +84,21 @@ export class AdminService {
     };
   }
 
-  async getRecentOrders(status?: string) {
+  async getRecentOrders(status?: string, search?: string) {
     const where: any = {};
     if (status && status !== 'ALL') where.status = status;
+    if (search) {
+      const num = parseInt(search, 10);
+      where.OR = [
+        ...(isNaN(num) ? [] : [{ orderNumber: num }]),
+        { id: { contains: search, mode: 'insensitive' } },
+        { client: { storeName: { contains: search, mode: 'insensitive' } } },
+        { distributor: { companyName: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
     return this.prisma.order.findMany({
       where,
-      take: status ? undefined : 10,
+      take: 50,
       orderBy: { createdAt: 'desc' },
       include: {
         client: { include: { user: true } },

@@ -18,7 +18,12 @@ export class DriverService {
         where: {
           driverId,
           status: 'DELIVERED',
-          updatedAt: { gte: today },
+          statusHistory: {
+            some: {
+              status: 'DELIVERED',
+              timestamp: { gte: today },
+            },
+          },
         },
       }),
       this.prisma.driverEarning.aggregate({
@@ -388,22 +393,25 @@ export class DriverService {
       }
 
       const clientData = collectionsByClient.get(clientId);
-      clientData.totalAmount += order.totalAmount;
       clientData.totalOrders += 1;
 
       // To'lov turi bo'yicha
       if (order.paymentMethod === 'CASH') {
         clientData.cashAmount += order.totalAmount;
         clientData.cashOrders += 1;
+        clientData.totalAmount += order.totalAmount; // faqat haydovchi yig'gan summa
       } else if (order.paymentMethod === 'CARD') {
         clientData.cardAmount += order.totalAmount;
         clientData.cardOrders += 1;
+        clientData.totalAmount += order.totalAmount; // faqat haydovchi yig'gan summa
       } else if (order.paymentMethod === 'CREDIT') {
         clientData.creditAmount += order.totalAmount;
         clientData.creditOrders += 1;
+        // totalAmount ga qo'shilmaydi — haydovchi CREDIT pulini olmaydi
       } else if (order.paymentMethod === 'BANK_TRANSFER') {
         clientData.bankTransferAmount += order.totalAmount;
         clientData.bankTransferOrders += 1;
+        // totalAmount ga qo'shilmaydi — haydovchi bank o'tkazmasini olmaydi
       }
 
       // Buyurtma tafsilotlari
@@ -424,18 +432,29 @@ export class DriverService {
     );
 
     // Umumiy statistika
+    const cashOrders       = orders.filter(o => o.paymentMethod === 'CASH');
+    const cardOrders       = orders.filter(o => o.paymentMethod === 'CARD');
+    const creditOrders     = orders.filter(o => o.paymentMethod === 'CREDIT');
+    const bankOrders       = orders.filter(o => o.paymentMethod === 'BANK_TRANSFER');
+    const cashAmount       = cashOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const cardAmount       = cardOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const creditAmount     = creditOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const bankAmount       = bankOrders.reduce((s, o) => s + o.totalAmount, 0);
+
     const summary = {
       totalClients: collections.length,
       totalOrders: orders.length,
-      totalAmount: orders.reduce((sum, o) => sum + o.totalAmount, 0),
-      cashAmount: orders.filter(o => o.paymentMethod === 'CASH').reduce((sum, o) => sum + o.totalAmount, 0),
-      cardAmount: orders.filter(o => o.paymentMethod === 'CARD').reduce((sum, o) => sum + o.totalAmount, 0),
-      creditAmount: orders.filter(o => o.paymentMethod === 'CREDIT').reduce((sum, o) => sum + o.totalAmount, 0),
-      bankTransferAmount: orders.filter(o => o.paymentMethod === 'BANK_TRANSFER').reduce((sum, o) => sum + o.totalAmount, 0),
-      cashOrders: orders.filter(o => o.paymentMethod === 'CASH').length,
-      cardOrders: orders.filter(o => o.paymentMethod === 'CARD').length,
-      creditOrders: orders.filter(o => o.paymentMethod === 'CREDIT').length,
-      bankTransferOrders: orders.filter(o => o.paymentMethod === 'BANK_TRANSFER').length,
+      // totalAmount = faqat haydovchi jismonan yig'gan summa (CASH + CARD)
+      totalAmount: cashAmount + cardAmount,
+      totalOrdersAmount: cashAmount + cardAmount + creditAmount + bankAmount,
+      cashAmount,
+      cardAmount,
+      creditAmount,
+      bankTransferAmount: bankAmount,
+      cashOrders:        cashOrders.length,
+      cardOrders:        cardOrders.length,
+      creditOrders:      creditOrders.length,
+      bankTransferOrders: bankOrders.length,
     };
 
     return {
