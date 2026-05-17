@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -573,11 +573,13 @@ export class DriverService {
   async findOrderByNumber(driverId: string, orderNumber: number) {
     const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
     if (!driver) throw new NotFoundException('Driver topilmadi');
+    if (!driver.distributorId) throw new NotFoundException('Driver hech qanday distribyutorga biriktirilmagan');
 
     const order = await this.prisma.order.findFirst({
       where: {
         orderNumber,
-        distributorId: driver.distributorId ?? undefined,
+        distributorId: driver.distributorId,
+        driverId,
       },
       include: {
         client: {
@@ -599,6 +601,14 @@ export class DriverService {
   }
 
   async collectPayment(orderId: string, driverId: string, paymentMethod: string, amount: number) {
+    const validMethods = ['CASH', 'CARD', 'BANK_TRANSFER', 'CREDIT'];
+    if (!validMethods.includes(paymentMethod)) {
+      throw new BadRequestException(`To'lov turi noto'g'ri. Mumkin: ${validMethods.join(', ')}`);
+    }
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('To\'lov summasi 0 dan katta bo\'lishi kerak');
+    }
+
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, driverId },
     });
