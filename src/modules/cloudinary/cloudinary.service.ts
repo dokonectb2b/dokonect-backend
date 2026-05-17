@@ -1,43 +1,58 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { v2 as cloudinary } from 'cloudinary';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { randomUUID } from 'crypto';
+import * as path from 'path';
 
 @Injectable()
 export class CloudinaryService {
+  private s3: S3Client;
+  private bucket: string;
+  private publicUrl: string;
+
   constructor(private config: ConfigService) {
-    cloudinary.config({
-      cloud_name: this.config.get('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.config.get('CLOUDINARY_API_KEY'),
-      api_secret: this.config.get('CLOUDINARY_API_SECRET'),
+    this.bucket = this.config.get<string>('R2_BUCKET_NAME');
+    this.publicUrl = this.config.get<string>('R2_PUBLIC_URL').replace(/\/$/, '');
+
+    this.s3 = new S3Client({
+      region: 'auto',
+      endpoint: this.config.get<string>('R2_ENDPOINT'),
+      credentials: {
+        accessKeyId: this.config.get<string>('R2_ACCESS_KEY_ID'),
+        secretAccessKey: this.config.get<string>('R2_SECRET_ACCESS_KEY'),
+      },
     });
   }
 
   async uploadImage(file: Express.Multer.File, folder: string = 'dokonect'): Promise<string> {
-    return new Promise((resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream(
-          {
-            folder,
-            resource_type: 'auto',
-          },
-          (error, result) => {
-            if (error) return reject(error);
-            resolve(result.secure_url);
-          },
-        )
-        .end(file.buffer);
+    const ext = path.extname(file.originalname) || '.jpg';
+    const key = `${folder}/${randomUUID()}${ext}`;
+
+    const upload = new Upload({
+      client: this.s3,
+      params: {
+        Bucket: this.bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      },
     });
+
+    await upload.done();
+    return `${this.publicUrl}/${key}`;
   }
 
-  async uploadMultipleImages(
-    files: Express.Multer.File[],
-    folder: string = 'dokonect',
-  ): Promise<string[]> {
-    const uploadPromises = files.map((file) => this.uploadImage(file, folder));
-    return Promise.all(uploadPromises);
+  async uploadMultipleImages(files: Express.Multer.File[], folder: string = 'dokonect'): Promise<string[]> {
+    return Promise.all(files.map((file) => this.uploadImage(file, folder)));
   }
 
   async deleteImage(publicId: string): Promise<void> {
-    await cloudinary.uploader.destroy(publicId);
+    // publicId sifatida to'liq URL yoki faqat key qabul qiladi
+    const key = publicId.startsWith('http')
+      ? publicId.replace(`${this.publicUrl}/`, '')
+      : publicId;
+
+    await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 }
