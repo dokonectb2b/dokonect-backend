@@ -8,6 +8,8 @@ import { AppModule } from './app.module';
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://dokonect.uz',
+  'https://www.dokonect.uz',
   'https://dokonect-frontend-seven.vercel.app',
   /https:\/\/.*\.vercel\.app$/,
   'http://16.16.213.165',
@@ -51,12 +53,14 @@ async function bootstrap() {
     'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:3003',
-    'http://localhost:5173', // Vite default port
-    'https://dokonect-frontend-seven.vercel.app', // Production frontend
-    /https:\/\/.*\.vercel\.app$/, // All Vercel preview deployments
-    'http://16.16.213.165', // AWS Lightsail IPv4
-    'http://16.16.213.165:5000', // AWS Lightsail with port
-    'https://16.16.213.165', // AWS Lightsail HTTPS
+    'http://localhost:5173',
+    'https://dokonect.uz',
+    'https://www.dokonect.uz',
+    'https://dokonect-frontend-seven.vercel.app',
+    /https:\/\/.*\.vercel\.app$/,
+    'http://16.16.213.165',
+    'http://16.16.213.165:5000',
+    'https://16.16.213.165',
   ];
 
   // Add CLIENT_URL from env if exists
