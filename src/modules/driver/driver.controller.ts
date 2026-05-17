@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DriverService } from './driver.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -91,10 +91,29 @@ export class DriverController {
     );
   }
 
+  @Get('orders/search/:orderNumber')
+  @ApiOperation({ summary: 'Buyurtmani raqam bo\'yicha qidirish (to\'lov uchun)' })
+  findOrderByNumber(
+    @Param('orderNumber', ParseIntPipe) orderNumber: number,
+    @CurrentUser('driver') driver: any,
+  ) {
+    return this.driverService.findOrderByNumber(driver.id, orderNumber);
+  }
+
   @Get('orders/:orderId')
   @ApiOperation({ summary: 'Buyurtma tafsiloti' })
   getOrderById(@Param('orderId') orderId: string, @CurrentUser('driver') driver: any) {
     return this.driverService.getOrderById(driver.id, orderId);
+  }
+
+  @Post('orders/:orderId/collect-payment')
+  @ApiOperation({ summary: 'To\'lovni qabul qilish (Naqd / Karta / Korporativ)' })
+  collectPayment(
+    @Param('orderId') orderId: string,
+    @CurrentUser('driver') driver: any,
+    @Body() body: { paymentMethod: string; amount: number },
+  ) {
+    return this.driverService.collectPayment(orderId, driver.id, body.paymentMethod, body.amount);
   }
 
   @Get('payment-stats')

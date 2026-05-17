@@ -570,6 +570,80 @@ export class DriverService {
     };
   }
 
+  async findOrderByNumber(driverId: string, orderNumber: number) {
+    const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+    if (!driver) throw new NotFoundException('Driver topilmadi');
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        orderNumber,
+        distributorId: driver.distributorId ?? undefined,
+      },
+      include: {
+        client: {
+          include: {
+            user: { select: { name: true, phone: true, avatar: true } },
+          },
+        },
+        items: {
+          include: {
+            product: { select: { id: true, name: true, unit: true } },
+          },
+        },
+        delivery: true,
+      },
+    });
+
+    if (!order) throw new NotFoundException('Buyurtma topilmadi');
+    return order;
+  }
+
+  async collectPayment(orderId: string, driverId: string, paymentMethod: string, amount: number) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, driverId },
+    });
+
+    if (!order) throw new NotFoundException('Buyurtma topilmadi yoki sizga tegishli emas');
+    if (order.paymentStatus === 'PAID') throw new ForbiddenException('Bu buyurtma allaqachon to\'langan');
+
+    const isPaid = amount >= order.totalAmount;
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentMethod: paymentMethod as any,
+        paymentStatus: isPaid ? 'PAID' : 'PARTIAL',
+      },
+      include: {
+        client: {
+          include: {
+            user: { select: { name: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    // BANK_TRANSFER (Korporativ) yoki CREDIT → Debt yaratiladi
+    if (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'CREDIT') {
+      const existing = await this.prisma.debt.findFirst({ where: { orderId } });
+      if (!existing) {
+        await this.prisma.debt.create({
+          data: {
+            orderId,
+            clientId: order.clientId,
+            distributorId: order.distributorId,
+            originalAmount: order.totalAmount,
+            paidAmount: amount,
+            remainingAmount: order.totalAmount - amount,
+            status: isPaid ? 'PAID' : amount > 0 ? 'PARTIAL' : 'UNPAID',
+          },
+        });
+      }
+    }
+
+    return updated;
+  }
+
   async getEarnings(driverId: string, period: string = 'today', startDate?: string, endDate?: string) {
     let dateFilter: any = {};
 
