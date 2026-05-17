@@ -614,6 +614,7 @@ export class DriverService {
     });
 
     if (!order) throw new NotFoundException('Buyurtma topilmadi yoki sizga tegishli emas');
+    if (order.status !== 'DELIVERED') throw new BadRequestException('Faqat yetkazilgan buyurtmadan to\'lov qabul qilish mumkin');
     if (order.paymentStatus === 'PAID') throw new ForbiddenException('Bu buyurtma allaqachon to\'langan');
 
     const isPaid = amount >= order.totalAmount;
