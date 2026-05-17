@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { StorageService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class UploadService {
-  constructor(private cloudinary: CloudinaryService) {}
+  constructor(private cloudinary: StorageService) {}
 
   async uploadSingle(file: Express.Multer.File, folder: string = 'dokonect') {
     const url = await this.cloudinary.uploadImage(file, folder);

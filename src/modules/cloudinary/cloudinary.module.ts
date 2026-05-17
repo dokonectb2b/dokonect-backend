@@ -1,9 +1,9 @@
 import { Module, Global } from '@nestjs/common';
-import { CloudinaryService } from './cloudinary.service';
+import { StorageService } from './cloudinary.service';
 
 @Global()
 @Module({
-  providers: [CloudinaryService],
-  exports: [CloudinaryService],
+  providers: [StorageService],
+  exports: [StorageService],
 })
-export class CloudinaryModule {}
+export class StorageModule {}

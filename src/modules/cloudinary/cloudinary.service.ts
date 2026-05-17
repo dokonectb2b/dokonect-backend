@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import * as path from 'path';
 
 @Injectable()
-export class CloudinaryService {
+export class StorageService {
   private s3: S3Client;
   private bucket: string;
   private publicUrl: string;

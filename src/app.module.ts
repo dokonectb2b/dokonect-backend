@@ -15,7 +15,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { DebtModule } from './modules/debt/debt.module';
 import { ReviewModule } from './modules/review/review.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { CloudinaryModule } from './modules/cloudinary/cloudinary.module';
+import { StorageModule } from './modules/cloudinary/cloudinary.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PricingModule } from './modules/pricing/pricing.module';
 import { CategoryModule } from './modules/category/category.module';
@@ -45,7 +45,7 @@ import { HealthController } from './health.controller';
     DebtModule,
     ReviewModule,
     AnalyticsModule,
-    CloudinaryModule,
+    StorageModule,
     InventoryModule,
     PricingModule,
     CategoryModule,
