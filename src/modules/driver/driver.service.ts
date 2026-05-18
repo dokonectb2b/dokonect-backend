@@ -308,14 +308,23 @@ export class DriverService {
 
     const cash = orders.filter((o) => o.paymentMethod === 'CASH');
     const card = orders.filter((o) => o.paymentMethod === 'CARD');
+    const corporate = orders.filter((o) => o.paymentMethod === 'BANK_TRANSFER');
+    const credit = orders.filter((o) => o.paymentMethod === 'CREDIT');
 
     const cashAmount = cash.reduce((s, o) => s + o.totalAmount, 0);
     const cardAmount = card.reduce((s, o) => s + o.totalAmount, 0);
+    const corporateAmount = corporate.reduce((s, o) => s + o.totalAmount, 0);
+    const creditAmount = credit.reduce((s, o) => s + o.totalAmount, 0);
+
+    const totalAmount = cashAmount + cardAmount + corporateAmount + creditAmount;
+    const totalCount = cash.length + card.length + corporate.length + credit.length;
 
     return {
       cash: { amount: cashAmount, count: cash.length },
       card: { amount: cardAmount, count: card.length },
-      total: { amount: cashAmount + cardAmount, count: cash.length + card.length },
+      corporate: { amount: corporateAmount, count: corporate.length },
+      credit: { amount: creditAmount, count: credit.length },
+      total: { amount: totalAmount, count: totalCount },
     };
   }
 
@@ -655,7 +664,7 @@ export class DriverService {
     return updated;
   }
 
-  async getEarnings(driverId: string, period: string = 'today', startDate?: string, endDate?: string) {
+  async getEarnings(driverId: string, startDate?: string, endDate?: string) {
     let dateFilter: any = {};
 
     if (startDate && endDate) {
@@ -666,26 +675,41 @@ export class DriverService {
       dateFilter = { gte: start, lte: end };
     } else {
       const start = new Date();
-      if (period === 'today') {
-        start.setHours(0, 0, 0, 0);
-      } else if (period === 'week') {
-        start.setDate(start.getDate() - 7);
-      } else if (period === 'month') {
-        start.setMonth(start.getMonth() - 1);
-      }
+      start.setHours(0, 0, 0, 0);
       dateFilter = { gte: start };
     }
 
     const earnings = await this.prisma.driverEarning.findMany({
-      where: {
-        driverId,
-        date: dateFilter,
-      },
+      where: { driverId, date: dateFilter },
       orderBy: { date: 'desc' },
     });
 
+    const orderIds = earnings.map((e) => e.orderId);
+    const orders = await this.prisma.order.findMany({
+      where: { id: { in: orderIds } },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalAmount: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        status: true,
+        client: {
+          select: {
+            user: { select: { name: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    const orderMap = new Map(orders.map((o) => [o.id, o]));
+    const result = earnings.map((e) => ({
+      ...e,
+      order: orderMap.get(e.orderId) ?? null,
+    }));
+
     const total = earnings.reduce((sum, e) => sum + e.amount + e.bonus, 0);
 
-    return { earnings, total };
+    return { earnings: result, total };
   }
 }

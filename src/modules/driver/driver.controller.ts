@@ -153,10 +153,9 @@ export class DriverController {
   @ApiOperation({ summary: 'Daromad tarixi' })
   getEarnings(
     @CurrentUser('driver') driver: any,
-    @Query('period') period?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.driverService.getEarnings(driver.id, period, startDate, endDate);
+    return this.driverService.getEarnings(driver.id, startDate, endDate);
   }
 }
