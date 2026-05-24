@@ -52,9 +52,11 @@ export class ClientController {
     @CurrentUser('client') client: any,
     @Query('region') region?: string,
     @Query('search') search?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
   ) {
     if (!client?.id) throw new NotFoundException('Client profili topilmadi');
-    return this.clientService.getDistributors(client.id, region, search);
+    return this.clientService.getDistributors(client.id, region, search, +page, +limit);
   }
 
   @Get('distributors/:distributorId')

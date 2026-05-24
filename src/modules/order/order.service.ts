@@ -108,68 +108,66 @@ export class OrderService {
     return order;
   }
 
-  async findAllForClient(clientId: string, status?: OrderStatus) {
+  async findAllForClient(clientId: string, status?: OrderStatus, page = 1, limit = 20) {
     const where: any = { clientId };
-    if (status) {
-      where.status = status;
-    }
+    if (status) where.status = status;
 
-    return this.prisma.order.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                name: true,
-                images: true,
-              },
+    const skip = (page - 1) * limit;
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              product: { select: { name: true, images: true } },
             },
           },
+          distributor: { select: { companyName: true, phone: true } },
         },
-        distributor: {
-          select: {
-            companyName: true,
-            phone: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      data: orders,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  async findAllForDistributor(distributorId: string, status?: OrderStatus) {
+  async findAllForDistributor(distributorId: string, status?: OrderStatus, page = 1, limit = 20) {
     const where: any = { distributorId };
-    if (status) {
-      where.status = status;
-    }
+    if (status) where.status = status;
 
-    return this.prisma.order.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                name: true,
-                images: true,
-              },
+    const skip = (page - 1) * limit;
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              product: { select: { name: true, images: true } },
+            },
+          },
+          client: {
+            include: {
+              user: { select: { name: true, phone: true } },
             },
           },
         },
-        client: {
-          include: {
-            user: {
-              select: {
-                name: true,
-                phone: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      data: orders,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findAllForDriver(driverId: string, status?: OrderStatus) {

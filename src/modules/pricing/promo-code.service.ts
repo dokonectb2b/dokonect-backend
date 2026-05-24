@@ -5,17 +5,24 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class PromoCodeService {
   constructor(private prisma: PrismaService) { }
 
-  async getPromoCodes(distributorId: string | null) {
+  async getPromoCodes(distributorId: string | null, page = 1, limit = 20) {
     const where = distributorId ? { distributorId } : {};
-    return this.prisma.promoCode.findMany({
-      where,
-      include: {
-        _count: {
-          select: { usages: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (page - 1) * limit;
+    const [promoCodes, total] = await Promise.all([
+      this.prisma.promoCode.findMany({
+        where,
+        include: { _count: { select: { usages: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.promoCode.count({ where }),
+    ]);
+
+    return {
+      data: promoCodes,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async createPromoCode(

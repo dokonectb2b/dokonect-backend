@@ -664,7 +664,7 @@ export class DriverService {
     return updated;
   }
 
-  async getEarnings(driverId: string, startDate?: string, endDate?: string) {
+  async getEarnings(driverId: string, startDate?: string, endDate?: string, page = 1, limit = 20) {
     let dateFilter: any = {};
 
     if (startDate && endDate) {
@@ -679,10 +679,19 @@ export class DriverService {
       dateFilter = { gte: start };
     }
 
-    const earnings = await this.prisma.driverEarning.findMany({
-      where: { driverId, date: dateFilter },
-      orderBy: { date: 'desc' },
-    });
+    const where = { driverId, date: dateFilter };
+    const skip  = (page - 1) * limit;
+
+    const [earnings, totalCount, allEarnings] = await Promise.all([
+      this.prisma.driverEarning.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.driverEarning.count({ where }),
+      this.prisma.driverEarning.findMany({ where, select: { amount: true, bonus: true } }),
+    ]);
 
     const orderIds = earnings.map((e) => e.orderId);
     const orders = await this.prisma.order.findMany({
@@ -703,13 +712,13 @@ export class DriverService {
     });
 
     const orderMap = new Map(orders.map((o) => [o.id, o]));
-    const result = earnings.map((e) => ({
-      ...e,
-      order: orderMap.get(e.orderId) ?? null,
-    }));
+    const result   = earnings.map((e) => ({ ...e, order: orderMap.get(e.orderId) ?? null }));
+    const total    = allEarnings.reduce((sum, e) => sum + e.amount + e.bonus, 0);
 
-    const total = earnings.reduce((sum, e) => sum + e.amount + e.bonus, 0);
-
-    return { earnings: result, total };
+    return {
+      earnings: result,
+      total,
+      pagination: { total: totalCount, page, limit, totalPages: Math.ceil(totalCount / limit) },
+    };
   }
 }

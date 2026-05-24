@@ -155,7 +155,9 @@ export class DriverController {
     @CurrentUser('driver') driver: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
   ) {
-    return this.driverService.getEarnings(driver.id, startDate, endDate);
+    return this.driverService.getEarnings(driver.id, startDate, endDate, +page, +limit);
   }
 }

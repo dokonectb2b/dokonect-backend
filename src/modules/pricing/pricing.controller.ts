@@ -69,8 +69,10 @@ export class PricingController {
   getBulkRules(
     @CurrentUser('distributor') distributor: any,
     @Query('productId') productId?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
   ) {
-    return this.pricingService.getBulkRules(distributor.id, productId);
+    return this.pricingService.getBulkRules(distributor.id, productId, +page, +limit);
   }
 
   @Post('bulk-rules')

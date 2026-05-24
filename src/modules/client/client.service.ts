@@ -285,17 +285,23 @@ export class ClientService {
     return { products, total, page: parseInt(page) || 1, limit: take };
   }
 
-  async getDistributors(_clientId: string, region?: string, search?: string) {
+  async getDistributors(_clientId: string, region?: string, search?: string, page = 1, limit = 20) {
     const where: any = { isVerified: true };
     if (search) where.companyName = { contains: search, mode: 'insensitive' };
     if (region) where.region = region;
 
-    const distributors = await this.prisma.distributor.findMany({
-      where,
-      include: { user: { select: { name: true, avatar: true } } },
-    });
+    const skip = (page - 1) * limit;
+    const [distributors, total] = await Promise.all([
+      this.prisma.distributor.findMany({
+        where,
+        include: { user: { select: { name: true, avatar: true } } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.distributor.count({ where }),
+    ]);
 
-    return distributors.map((d: any) => ({
+    const data = distributors.map((d: any) => ({
       id: d.id,
       companyName: d.companyName,
       logo: d.logo,
@@ -305,6 +311,11 @@ export class ClientService {
       rating: d.rating,
       isVerified: d.isVerified,
     }));
+
+    return {
+      data,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async getDistributorById(_clientId: string, distributorId: string) {

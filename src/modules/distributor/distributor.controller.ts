@@ -43,9 +43,14 @@ export class DistributorController {
 
   @Get('orders')
   @ApiOperation({ summary: 'Distributor buyurtmalari' })
-  getOrders(@CurrentUser() user: any, @Query('status') status?: string) {
+  getOrders(
+    @CurrentUser() user: any,
+    @Query('status') status?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
     const distributorId = user.distributor?.id || null;
-    return this.distributorService.getOrders(distributorId, status);
+    return this.distributorService.getOrders(distributorId, status, +page, +limit);
   }
 
   @Post('orders/:orderId/accept')
@@ -89,9 +94,11 @@ export class DistributorController {
   getInventory(
     @CurrentUser() user: any,
     @Query('warehouseId') warehouseId?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
   ) {
     const distributorId = user.distributor?.id || null;
-    return this.distributorService.getInventory(distributorId, warehouseId);
+    return this.distributorService.getInventory(distributorId, warehouseId, +page, +limit);
   }
 
   @Patch('products/:productId/stock')
@@ -113,9 +120,13 @@ export class DistributorController {
 
   @Get('drivers')
   @ApiOperation({ summary: 'Haydovchilar ro\'yxati' })
-  getDrivers(@CurrentUser() user: any) {
+  getDrivers(
+    @CurrentUser() user: any,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
     const distributorId = user.distributor?.id || null;
-    return this.distributorService.getDrivers(distributorId);
+    return this.distributorService.getDrivers(distributorId, +page, +limit);
   }
 
   @Post('drivers')
@@ -153,9 +164,14 @@ export class DistributorController {
 
   @Get('connections')
   @ApiOperation({ summary: "Ulanish so'rovlari ro'yxati" })
-  getConnectionRequests(@CurrentUser() user: any) {
+  getConnectionRequests(
+    @CurrentUser() user: any,
+    @Query('status') status?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
     const distributorId = user.distributor?.id || null;
-    return this.distributorService.getConnectionRequests(distributorId);
+    return this.distributorService.getConnectionRequests(distributorId, status, +page, +limit);
   }
 
   @Patch('connections/:linkId')

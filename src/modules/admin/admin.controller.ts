@@ -22,8 +22,13 @@ export class AdminController {
 
   @Get('orders')
   @ApiOperation({ summary: 'Barcha buyurtmalar' })
-  getRecentOrders(@Query('status') status?: string, @Query('search') search?: string) {
-    return this.adminService.getRecentOrders(status, search);
+  getRecentOrders(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getRecentOrders(status, search, page ? +page : 1, limit ? +limit : 20);
   }
 
   @Get('drivers/active')
@@ -34,8 +39,13 @@ export class AdminController {
 
   @Get('users')
   @ApiOperation({ summary: 'Barcha foydalanuvchilar' })
-  getAllUsers(@Query('role') role?: string, @Query('search') search?: string) {
-    return this.adminService.getAllUsers(role, search);
+  getAllUsers(
+    @Query('role') role?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllUsers(role, search, page ? +page : 1, limit ? +limit : 20);
   }
 
   @Post('users')

@@ -103,22 +103,26 @@ export class PricingService {
   }
 
   // Bulk Rules (Quantity-based pricing)
-  async getBulkRules(distributorId: string, productId?: string) {
-    const where: any = {
-      product: { distributorId },
+  async getBulkRules(distributorId: string, productId?: string, page = 1, limit = 20) {
+    const where: any = { product: { distributorId } };
+    if (productId) where.productId = productId;
+
+    const skip = (page - 1) * limit;
+    const [rules, total] = await Promise.all([
+      this.prisma.bulkRule.findMany({
+        where,
+        include: { product: true },
+        orderBy: { minQuantity: 'asc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.bulkRule.count({ where }),
+    ]);
+
+    return {
+      data: { rules },
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
-
-    if (productId) {
-      where.productId = productId;
-    }
-
-    return this.prisma.bulkRule.findMany({
-      where,
-      include: {
-        product: true,
-      },
-      orderBy: { minQuantity: 'asc' },
-    });
   }
 
   async createBulkRule(

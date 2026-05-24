@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PromoCodeService } from './promo-code.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,9 +18,13 @@ export class PromoCodeController {
   @UseGuards(RolesGuard)
   @Roles(Role.DISTRIBUTOR, Role.ADMIN)
   @ApiOperation({ summary: "Promo kodlar ro'yxati" })
-  getPromoCodes(@CurrentUser() user: any) {
+  getPromoCodes(
+    @CurrentUser() user: any,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
     const distributorId = user.distributor?.id || null;
-    return this.promoCodeService.getPromoCodes(distributorId);
+    return this.promoCodeService.getPromoCodes(distributorId, +page, +limit);
   }
 
   @Post()

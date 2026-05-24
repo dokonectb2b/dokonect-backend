@@ -222,22 +222,31 @@ export class DistributorService {
     };
   }
 
-  async getOrders(distributorId: string | null, status?: string) {
+  async getOrders(distributorId: string | null, status?: string, page = 1, limit = 20) {
     const where: any = {};
-    if (distributorId) {
-      where.distributorId = distributorId;
-    }
+    if (distributorId) where.distributorId = distributorId;
     if (status) where.status = status;
 
-    return this.prisma.order.findMany({
-      where,
-      include: {
-        client: { include: { user: true } },
-        driver: { include: { user: true } },
-        items: { include: { product: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (page - 1) * limit;
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          client: { include: { user: true } },
+          driver: { include: { user: true } },
+          items: { include: { product: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      data: orders,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async acceptOrder(orderId: string, distributorId: string) {
@@ -320,31 +329,35 @@ export class DistributorService {
     });
   }
 
-  async getInventory(distributorId: string | null, warehouseId?: string) {
+  async getInventory(distributorId: string | null, warehouseId?: string, page = 1, limit = 20) {
     const where: any = {};
+    if (distributorId) where.product = { distributorId };
+    if (warehouseId) where.warehouseId = warehouseId;
 
-    if (distributorId) {
-      where.product = { distributorId };
-    }
-
-    if (warehouseId) {
-      where.warehouseId = warehouseId;
-    }
-
-    const inventory = await this.prisma.inventory.findMany({
-      where,
-      include: {
-        product: {
-          include: {
-            images: { where: { isCover: true }, take: 1 },
-            category: true,
+    const skip = (page - 1) * limit;
+    const [inventory, total] = await Promise.all([
+      this.prisma.inventory.findMany({
+        where,
+        include: {
+          product: {
+            include: {
+              images: { where: { isCover: true }, take: 1 },
+              category: true,
+            },
           },
+          warehouse: true,
         },
-        warehouse: true,
-      },
-    });
+        skip,
+        take: limit,
+      }),
+      this.prisma.inventory.count({ where }),
+    ]);
 
-    return { success: true, data: { inventory } };
+    return {
+      success: true,
+      data: { inventory },
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async updateStock(
@@ -456,29 +469,30 @@ export class DistributorService {
     return { success: true, newQuantity: totalQuantity };
   }
 
-  async getDrivers(distributorId: string | null) {
+  async getDrivers(distributorId: string | null, page = 1, limit = 20) {
     const where: any = {};
+    if (distributorId) where.distributorId = distributorId;
 
-    // Faqat o'sha distribyutorga tegishli haydovchilarni ko'rsatish
-    if (distributorId) {
-      where.distributorId = distributorId;
-    }
-
-    const drivers = await this.prisma.driver.findMany({
-      where,
-      include: {
-        user: true,
-        _count: {
-          select: {
-            orders: true,
-            deliveries: true,
-          },
+    const skip = (page - 1) * limit;
+    const [drivers, total] = await Promise.all([
+      this.prisma.driver.findMany({
+        where,
+        include: {
+          user: true,
+          _count: { select: { orders: true, deliveries: true } },
         },
-      },
-      orderBy: { user: { name: 'asc' } },
-    });
+        orderBy: { user: { name: 'asc' } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.driver.count({ where }),
+    ]);
 
-    return { success: true, data: drivers };
+    return {
+      success: true,
+      data: drivers,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async createDriver(distributorId: string | null, data: any) {
@@ -594,19 +608,33 @@ export class DistributorService {
     return { success: true, data: updatedDriver };
   }
 
-  async getConnectionRequests(distributorId: string | null) {
-    const links = await this.prisma.storeDistributorLink.findMany({
-      where: distributorId ? { distributorId } : {},
-      include: {
-        storeOwner: {
-          include: {
-            user: { select: { id: true, name: true, phone: true } },
+  async getConnectionRequests(distributorId: string | null, status?: string, page = 1, limit = 20) {
+    const where: any = distributorId ? { distributorId } : {};
+    if (status) where.status = status;
+
+    const skip = (page - 1) * limit;
+    const [links, total] = await Promise.all([
+      this.prisma.storeDistributorLink.findMany({
+        where,
+        include: {
+          storeOwner: {
+            include: {
+              user: { select: { id: true, name: true, phone: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return { success: true, data: links };
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.storeDistributorLink.count({ where }),
+    ]);
+
+    return {
+      success: true,
+      data: links,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async respondToConnection(linkId: string, distributorId: string | null, action: 'APPROVED' | 'REJECTED') {

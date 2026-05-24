@@ -84,7 +84,7 @@ export class AdminService {
     };
   }
 
-  async getRecentOrders(status?: string, search?: string) {
+  async getRecentOrders(status?: string, search?: string, page = 1, limit = 20) {
     const where: any = {};
     if (status && status !== 'ALL') where.status = status;
     if (search) {
@@ -96,17 +96,34 @@ export class AdminService {
         { distributor: { companyName: { contains: search, mode: 'insensitive' } } },
       ];
     }
-    return this.prisma.order.findMany({
-      where,
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        client: { include: { user: true } },
-        distributor: true,
-        driver: { include: { user: true } },
-        items: { include: { product: true } },
+    const skip = (page - 1) * limit;
+    const [orders, total, newCount, activeCount, doneCount, cancelledCount] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          client: { include: { user: true } },
+          distributor: true,
+          driver: { include: { user: true } },
+          items: { include: { product: true } },
+        },
+      }),
+      this.prisma.order.count({ where }),
+      this.prisma.order.count({ where: { ...where, status: 'NEW' } }),
+      this.prisma.order.count({ where: { ...where, status: { in: ['ACCEPTED', 'ASSIGNED', 'IN_TRANSIT'] } } }),
+      this.prisma.order.count({ where: { ...where, status: 'DELIVERED' } }),
+      this.prisma.order.count({ where: { ...where, status: { in: ['CANCELLED', 'REJECTED'] } } }),
+    ]);
+    return {
+      success: true,
+      data: {
+        orders,
+        pagination: { total, page, totalPages: Math.ceil(total / limit) },
+        counts: { new: newCount, active: activeCount, done: doneCount, cancelled: cancelledCount },
       },
-    });
+    };
   }
 
   async getActiveDrivers() {
@@ -117,7 +134,7 @@ export class AdminService {
     });
   }
 
-  async getAllUsers(role?: string, search?: string) {
+  async getAllUsers(role?: string, search?: string, page = 1, limit = 20) {
     const where: any = {};
     if (role) where.role = role;
     if (search) {
@@ -127,12 +144,29 @@ export class AdminService {
         { email: { contains: search, mode: 'insensitive' } },
       ];
     }
-    const users = await this.prisma.user.findMany({
-      where,
-      include: { client: true, distributor: true, driver: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    return { success: true, data: { users } };
+    const skip = (page - 1) * limit;
+    const [users, total, distCount, driverCount, clientCount, blockedCount] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        include: { client: true, distributor: true, driver: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.user.count({ where }),
+      this.prisma.user.count({ where: { ...where, role: 'DISTRIBUTOR' } }),
+      this.prisma.user.count({ where: { ...where, role: 'DRIVER' } }),
+      this.prisma.user.count({ where: { ...where, role: 'CLIENT' } }),
+      this.prisma.user.count({ where: { ...where, status: 'SUSPENDED' } }),
+    ]);
+    return {
+      success: true,
+      data: {
+        users,
+        pagination: { total, page, totalPages: Math.ceil(total / limit) },
+        counts: { distributor: distCount, driver: driverCount, client: clientCount, blocked: blockedCount },
+      },
+    };
   }
 
   async createUser(data: { name: string; phone: string; password: string; role: string }) {
