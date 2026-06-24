@@ -1,19 +1,42 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto';
+import { OtpService } from './otp.service';
+import { RegisterDto, LoginDto, SendOtpDto, VerifyOtpDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private otpService: OtpService,
+  ) {}
 
   @Post('register')
-  @ApiOperation({ summary: "Ro'yxatdan o'tish" })
+  @ApiOperation({ summary: "Ro'yxatdan o'tish (OTPsiz — admin uchun)" })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('send-otp')
+  @ApiOperation({ summary: 'Telegram botga OTP yuborish' })
+  sendOtp(@Body() dto: SendOtpDto) {
+    return this.authService.sendOtp(dto.phone);
+  }
+
+  @Post('verify-register')
+  @ApiOperation({ summary: 'OTP tasdiqlash va ro\'yxatdan o\'tish' })
+  verifyRegister(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtpAndRegister(dto);
+  }
+
+  @Post('telegram-webhook')
+  @ApiOperation({ summary: 'Telegram bot webhook (faqat Telegram uchun)' })
+  telegramWebhook(@Body() update: any) {
+    this.otpService.handleWebhookUpdate(update).catch(() => null);
+    return { ok: true };
   }
 
   @Post('login')

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class DistributorService {
@@ -144,19 +145,7 @@ export class DistributorService {
       take: 5,
     });
 
-    const topProducts = await Promise.all(
-      topSellingProducts.map(async (item) => {
-        const product = await this.prisma.product.findUnique({
-          where: { id: item.productId },
-          include: { images: { where: { isCover: true }, take: 1 } },
-        });
-        return {
-          ...product,
-          soldQuantity: item._sum.quantity,
-          revenue: item._sum.total,
-        };
-      }),
-    );
+    const topSellingIds = topSellingProducts.map((p) => p.productId);
 
     // Kam qolgan mahsulotlar
     const lowStockProducts = await this.prisma.inventory.findMany({
@@ -201,18 +190,28 @@ export class DistributorService {
       take: 5,
     });
 
-    const mostOrdered = await Promise.all(
-      mostOrderedProducts.map(async (item) => {
-        const product = await this.prisma.product.findUnique({
-          where: { id: item.productId },
+    const mostOrderedIds = mostOrderedProducts.map((p) => p.productId);
+
+    // Barcha kerakli mahsulotlarni bitta query bilan olish (N+1 ni oldini olish)
+    const allProductIds = [...new Set([...topSellingIds, ...mostOrderedIds])];
+    const allProducts = allProductIds.length > 0
+      ? await this.prisma.product.findMany({
+          where: { id: { in: allProductIds } },
           include: { images: { where: { isCover: true }, take: 1 } },
-        });
-        return {
-          ...product,
-          orderCount: item._count.id,
-        };
-      }),
-    );
+        })
+      : [];
+    const productMap = Object.fromEntries(allProducts.map((p) => [p.id, p]));
+
+    const topProducts = topSellingProducts.map((item) => ({
+      ...productMap[item.productId],
+      soldQuantity: item._sum.quantity,
+      revenue: item._sum.total,
+    }));
+
+    const mostOrdered = mostOrderedProducts.map((item) => ({
+      ...productMap[item.productId],
+      orderCount: item._count.id,
+    }));
 
     return {
       topSellingProducts: topProducts,
@@ -515,7 +514,6 @@ export class DistributorService {
       throw new Error('Bu telefon raqam allaqachon ro\'yxatdan o\'tgan. Boshqa raqam kiriting.');
     }
 
-    const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     try {
@@ -597,7 +595,6 @@ export class DistributorService {
 
     // Update password if provided
     if (data.password) {
-      const bcrypt = require('bcryptjs');
       const hashedPassword = await bcrypt.hash(data.password, 10);
       await this.prisma.user.update({
         where: { id: driver.userId },

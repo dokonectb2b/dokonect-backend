@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProductAnalyticsService } from '../product/product-analytics.service';
+import { ClientTier } from '@prisma/client';
 
 @Injectable()
 export class DriverService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private analyticsService: ProductAnalyticsService,
+  ) { }
 
   async getDashboard(driverId: string) {
     const today = new Date();
@@ -125,6 +130,7 @@ export class DriverService {
       include: {
         client: { include: { user: true } },
         delivery: true,
+        items: true,
       },
     });
 
@@ -153,6 +159,35 @@ export class DriverService {
         await this.prisma.driverEarning.create({
           data: { driverId, orderId, amount: baseAmount },
         });
+      }
+
+      // Only trigger on first-time DELIVERED transition
+      if (existing.status !== 'DELIVERED') {
+        // Update SalesVelocity for each product in the order
+        await Promise.all(
+          order.items.map((item) =>
+            this.analyticsService.calculateSalesVelocity(item.productId)
+          )
+        );
+
+        // Update client loyalty points and tier
+        if (order.clientId) {
+          const client = await this.prisma.client.findUnique({
+            where: { id: order.clientId },
+            select: { id: true, loyaltyPoints: true },
+          });
+          if (client) {
+            const earnedPoints = Math.floor(order.totalAmount / 1000);
+            const newPoints = client.loyaltyPoints + earnedPoints;
+            const newTier: ClientTier =
+              newPoints >= 5000 ? 'GOLD' :
+              newPoints >= 1000 ? 'SILVER' : 'BRONZE';
+            await this.prisma.client.update({
+              where: { id: client.id },
+              data: { loyaltyPoints: newPoints, tier: newTier },
+            });
+          }
+        }
       }
     }
 
@@ -643,10 +678,22 @@ export class DriverService {
       },
     });
 
-    // BANK_TRANSFER (Korporativ) yoki CREDIT → Debt yaratiladi
+    // BANK_TRANSFER (Korporativ) yoki CREDIT → Debt yaratiladi yoki yangilanadi
     if (paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'CREDIT') {
+      const debtStatus = isPaid ? 'PAID' : amount > 0 ? 'PARTIAL' : 'UNPAID';
       const existing = await this.prisma.debt.findFirst({ where: { orderId } });
-      if (!existing) {
+
+      if (existing) {
+        // CREDIT bilan yaratilgan buyurtmada debt allaqachon bor — yangilaymiz
+        await this.prisma.debt.update({
+          where: { id: existing.id },
+          data: {
+            paidAmount: amount,
+            remainingAmount: Math.max(0, order.totalAmount - amount),
+            status: debtStatus as any,
+          },
+        });
+      } else {
         await this.prisma.debt.create({
           data: {
             orderId,
@@ -654,8 +701,8 @@ export class DriverService {
             distributorId: order.distributorId,
             originalAmount: order.totalAmount,
             paidAmount: amount,
-            remainingAmount: order.totalAmount - amount,
-            status: isPaid ? 'PAID' : amount > 0 ? 'PARTIAL' : 'UNPAID',
+            remainingAmount: Math.max(0, order.totalAmount - amount),
+            status: debtStatus as any,
           },
         });
       }

@@ -1,14 +1,16 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RegisterDto, LoginDto } from './dto';
+import { RegisterDto, LoginDto, VerifyOtpDto } from './dto';
+import { OtpService } from './otp.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private otpService: OtpService,
   ) { }
 
   async register(dto: RegisterDto) {
@@ -81,15 +83,23 @@ export class AuthService {
     };
   }
 
+  private normalizePhone(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    return digits.startsWith('998') ? `+${digits}` : `+998${digits}`;
+  }
+
   async login(dto: LoginDto) {
-    // Email yoki phone orqali foydalanuvchini topish
+    // Faqat berilgan maydonlar bo'yicha qidirish (undefined → OR ni buzadi)
+    const conditions: { phone?: string; email?: string }[] = [];
+    if (dto.phone) conditions.push({ phone: this.normalizePhone(dto.phone) });
+    if (dto.email) conditions.push({ email: dto.email });
+
+    if (conditions.length === 0) {
+      throw new UnauthorizedException('Telefon yoki email kiriting');
+    }
+
     const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { phone: dto.phone },
-          { email: dto.email },
-        ],
-      },
+      where: { OR: conditions },
       include: {
         client: true,
         distributor: true,
@@ -129,6 +139,20 @@ export class AuthService {
         refreshToken,
       },
     };
+  }
+
+  async sendOtp(phone: string) {
+    const result = await this.otpService.sendOtp(phone);
+    return { success: true, message: 'Tasdiqlash kodi Telegram botga yuborildi', ...result };
+  }
+
+  async verifyOtpAndRegister(dto: VerifyOtpDto) {
+    const isValid = this.otpService.verifyOtp(dto.phone, dto.code);
+    if (!isValid) {
+      throw new BadRequestException("Kod noto'g'ri yoki muddati tugagan");
+    }
+    const { code: _code, ...registerData } = dto;
+    return this.register(registerData as RegisterDto);
   }
 
   async refreshAccessToken(refreshToken: string) {

@@ -1,25 +1,30 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto';
-import { OrderStatus } from '@prisma/client';
+import { ClientTier, OrderStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
+import { ProductAnalyticsService } from '../product/product-analytics.service';
 
 @Injectable()
 export class OrderService {
   constructor(
     private prisma: PrismaService,
     private events: EventsGateway,
+    private analyticsService: ProductAnalyticsService,
   ) { }
 
   async create(clientId: string, dto: CreateOrderDto) {
-    // Validate products exist and calculate totals
+    const productIds = [...new Set(dto.items.map((i) => i.productId))];
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
     let subtotal = 0;
     const orderItems = [];
 
     for (const item of dto.items) {
-      const product = await this.prisma.product.findUnique({
-        where: { id: item.productId },
-      });
+      const product = productMap.get(item.productId);
 
       if (!product) {
         throw new NotFoundException(`Mahsulot topilmadi: ${item.productId}`);
@@ -363,6 +368,33 @@ export class OrderService {
         },
       },
     });
+
+    // Only trigger on first-time DELIVERED transition
+    if (dto.status === OrderStatus.DELIVERED && order.status !== OrderStatus.DELIVERED) {
+      await Promise.all(
+        updatedOrder.items.map((item) =>
+          this.analyticsService.calculateSalesVelocity(item.productId)
+        )
+      );
+
+      if (order.clientId) {
+        const client = await this.prisma.client.findUnique({
+          where: { id: order.clientId },
+          select: { id: true, loyaltyPoints: true },
+        });
+        if (client) {
+          const earnedPoints = Math.floor(order.totalAmount / 1000);
+          const newPoints = client.loyaltyPoints + earnedPoints;
+          const newTier: ClientTier =
+            newPoints >= 5000 ? 'GOLD' :
+            newPoints >= 1000 ? 'SILVER' : 'BRONZE';
+          await this.prisma.client.update({
+            where: { id: client.id },
+            data: { loyaltyPoints: newPoints, tier: newTier },
+          });
+        }
+      }
+    }
 
     return updatedOrder;
   }

@@ -1,5 +1,6 @@
 ﻿import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AdminService {
@@ -171,7 +172,6 @@ export class AdminService {
 
   async createUser(data: { name: string; phone: string; password: string; role: string }) {
     try {
-      const bcrypt = require('bcryptjs');
       const hashedPassword = await bcrypt.hash(data.password, 10);
       const user = await this.prisma.user.create({
         data: {
@@ -381,7 +381,6 @@ export class AdminService {
   }
 
   async createDistributor(data: any) {
-    const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(data.password || 'Dokonect@2024', 10);
     const user = await this.prisma.user.create({
       data: {
@@ -421,7 +420,6 @@ export class AdminService {
     });
 
     if (data.password) {
-      const bcrypt = require('bcryptjs');
       const hashed = await bcrypt.hash(data.password, 10);
       await this.prisma.user.update({ where: { id: distributor.userId }, data: { password: hashed } });
     }

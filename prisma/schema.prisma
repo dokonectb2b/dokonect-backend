@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model TelegramChatMapping {
+  phone     String   @id
+  chatId    String
+  updatedAt DateTime @updatedAt
+}
 
 model User {
   id                    String         @id @default(uuid())
