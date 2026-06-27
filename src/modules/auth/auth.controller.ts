@@ -39,6 +39,18 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Post('telegram-driver')
+  @ApiOperation({ summary: 'Telegram Mini App orqali driver autentifikatsiyasi' })
+  telegramDriverAuth(@Body() body: { initData: string; phone?: string }) {
+    return this.authService.telegramDriverAuth(body.initData, body.phone);
+  }
+
+  @Post('telegram-client')
+  @ApiOperation({ summary: 'Telegram Mini App orqali client/do\'kon autentifikatsiyasi' })
+  telegramClientAuth(@Body() body: { initData: string; phone?: string }) {
+    return this.authService.telegramClientAuth(body.initData, body.phone);
+  }
+
   @Post('login')
   @ApiOperation({ summary: 'Tizimga kirish' })
   login(@Body() dto: LoginDto) {

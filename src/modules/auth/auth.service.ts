@@ -1,5 +1,7 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto, LoginDto, VerifyOtpDto } from './dto';
@@ -11,6 +13,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private otpService: OtpService,
+    private config: ConfigService,
   ) { }
 
   async register(dto: RegisterDto) {
@@ -187,6 +190,96 @@ export class AuthService {
     }
 
     return this.sanitizeUser(user);
+  }
+
+  // ─── Telegram Mini App — umumiy helper ───────────────────────────────────────
+
+  private async telegramMiniAppAuth(
+    initData: string,
+    phone: string | undefined,
+    requiredRole: 'DRIVER' | 'CLIENT',
+  ) {
+    const telegramUser = this.validateTelegramInitData(initData);
+    if (!telegramUser) throw new UnauthorizedException("Telegram ma'lumotlari noto'g'ri");
+
+    const chatId = String(telegramUser.id);
+    let user: any;
+
+    if (phone) {
+      const normalizedPhone = this.normalizePhone(phone);
+      user = await this.prisma.user.findFirst({
+        where: { phone: normalizedPhone },
+        include: { client: true, distributor: true, driver: true },
+      });
+      if (!user) throw new NotFoundException('Bu raqam tizimda topilmadi');
+      if (user.role !== requiredRole) {
+        const label = requiredRole === 'DRIVER' ? 'haydovchi' : 'do\'kon';
+        throw new UnauthorizedException(`Bu raqam ${label} sifatida ro'yxatdan o'tmagan`);
+      }
+      await this.prisma.telegramChatMapping.upsert({
+        where:  { phone: normalizedPhone },
+        update: { chatId },
+        create: { phone: normalizedPhone, chatId },
+      });
+    } else {
+      const mapping = await this.prisma.telegramChatMapping.findFirst({ where: { chatId } });
+      if (!mapping) return { needsPhone: true };
+      user = await this.prisma.user.findFirst({
+        where: { phone: mapping.phone },
+        include: { client: true, distributor: true, driver: true },
+      });
+      if (!user || user.role !== requiredRole) return { needsPhone: true };
+    }
+
+    const refreshToken = this.generateRefreshToken(user.id, user.role);
+    await this.prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
+    const accessToken = this.generateToken(user.id, user.role);
+
+    return {
+      success: true,
+      data: { user: this.sanitizeUser(user), accessToken, token: accessToken, refreshToken },
+    };
+  }
+
+  // ─── Telegram Mini App Auth (Driver & Client) ────────────────────────────────
+
+  async telegramDriverAuth(initData: string, phone?: string) {
+    return this.telegramMiniAppAuth(initData, phone, 'DRIVER');
+  }
+
+  async telegramClientAuth(initData: string, phone?: string) {
+    return this.telegramMiniAppAuth(initData, phone, 'CLIENT');
+  }
+
+  private validateTelegramInitData(initData: string): { id: number; first_name: string } | null {
+    try {
+      const botToken = this.config.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
+      if (!botToken || !initData) return null;
+
+      const params = new URLSearchParams(initData);
+      const hash = params.get('hash');
+      if (!hash) return null;
+
+      params.delete('hash');
+      const dataCheckString = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n');
+
+      const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
+      const computed  = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+
+      if (computed !== hash) return null;
+
+      // auth_date: 1 soatdan eski initData rad etiladi
+      const authDate = Number(params.get('auth_date') ?? '0');
+      if (!authDate || Date.now() / 1000 - authDate > 3600) return null;
+
+      const userStr = params.get('user');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch {
+      return null;
+    }
   }
 
   private generateToken(userId: string, role: string): string {

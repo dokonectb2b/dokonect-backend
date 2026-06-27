@@ -12,6 +12,8 @@ interface StoreEntry {
 export class OtpService implements OnModuleInit, OnModuleDestroy {
   private botToken: string;
   private botUsername: string;
+  private miniAppUrl: string;
+  private customerMiniAppUrl: string;
 
   private otpMap  = new Map<string, StoreEntry>(); // phone → { code, expiresAt }
   private sentMap = new Map<string, number>();      // phone → rateLimitExpiresAt
@@ -23,17 +25,24 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
     config: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.botToken    = config.get<string>('TELEGRAM_BOT_TOKEN')    ?? '';
-    this.botUsername = config.get<string>('TELEGRAM_BOT_USERNAME') ?? 'dokonect_bot';
+    this.botToken          = config.get<string>('TELEGRAM_BOT_TOKEN')       ?? '';
+    this.botUsername       = config.get<string>('TELEGRAM_BOT_USERNAME')    ?? 'dokonect_bot';
+    this.miniAppUrl        = config.get<string>('MINI_APP_URL')             ?? 'https://dokonect-frontend-seven.vercel.app/driver/tg-auth';
+    this.customerMiniAppUrl= config.get<string>('CUSTOMER_MINI_APP_URL')   ?? 'https://dokonect-frontend-seven.vercel.app/store/tg-auth';
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
   async onModuleInit() {
     if (!this.botToken) return;
-    // Webhook bo'lsa o'chiriladi — polling bilan parallel ishlamaydi
     try { await axios.post(`https://api.telegram.org/bot${this.botToken}/deleteWebhook`); } catch { /* ignore */ }
-    this.pollTimer = setInterval(() => this.poll(), 2000);
+    this.pollTimer = setInterval(() => this.poll(), 30000);
+    // Eskirgan OTP va rate-limit yozuvlarini har 10 daqiqada tozalash
+    setInterval(() => {
+      const now = Date.now();
+      for (const [k, v] of this.otpMap)  if (now > v.expiresAt)    this.otpMap.delete(k);
+      for (const [k, v] of this.sentMap) if (now > v)              this.sentMap.delete(k);
+    }, 10 * 60 * 1000);
   }
 
   onModuleDestroy() {
@@ -44,12 +53,14 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
     try {
       const res = await axios.get(
         `https://api.telegram.org/bot${this.botToken}/getUpdates`,
-        { params: { offset: this.pollOffset, timeout: 0 }, timeout: 5000 },
+        { params: { offset: this.pollOffset, timeout: 25 }, timeout: 30000 },
       );
       const updates: any[] = res.data?.result ?? [];
       for (const update of updates) {
+        try {
+          await this.handleWebhookUpdate(update);
+        } catch { /* individual update xatosi butun pollni to'xtatmasin */ }
         this.pollOffset = update.update_id + 1;
-        await this.handleWebhookUpdate(update);
       }
     } catch { /* network xatolarini e'tiborsiz qoldir */ }
   }
@@ -109,7 +120,7 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
     await axios.post(`https://api.telegram.org/bot${this.botToken}/${method}`, body);
   }
 
-  // "Telefon raqamni ulashish" klaviaturasi
+  // Ro'yxatdan o'tish uchun "Telefon raqamni ulashish" klaviaturasi
   private async sendContactKeyboard(chatId: string): Promise<void> {
     await this.tgPost('sendMessage', {
       chat_id: chatId,
@@ -122,6 +133,40 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
         keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
         resize_keyboard: true,
         one_time_keyboard: true,
+      },
+    });
+  }
+
+  // Customer (do'kon) uchun Mini App tugmasi
+  private async sendCustomerAppButton(chatId: string, name: string): Promise<void> {
+    await this.tgPost('sendMessage', {
+      chat_id: chatId,
+      text:
+        `✅ <b>Xush kelibsiz, ${name}!</b>\n\n` +
+        `🛒 Siz do'kon egasi sifatida ro'yxatdan o'tgansiz.\n\n` +
+        `Ilovani ochish uchun quyidagi tugmani bosing:`,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🛒 Do\'kon Ilovasini Ochish', web_app: { url: this.customerMiniAppUrl } },
+        ]],
+      },
+    });
+  }
+
+  // Driver uchun Mini App tugmasi
+  private async sendDriverAppButton(chatId: string, driverName: string): Promise<void> {
+    await this.tgPost('sendMessage', {
+      chat_id: chatId,
+      text:
+        `✅ <b>Xush kelibsiz, ${driverName}!</b>\n\n` +
+        `🚗 Siz haydovchi sifatida ro'yxatdan o'tgansiz.\n\n` +
+        `Ilovani ochish uchun quyidagi tugmani bosing:`,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🚀 Driver Ilovasini Ochish', web_app: { url: this.miniAppUrl } },
+        ]],
       },
     });
   }
@@ -147,7 +192,7 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
   private async generateAndSendOtp(chatId: string, phone: string): Promise<void> {
     const code = this.generateCode();
     this.storeOtp(phone, code);
-    this.sentMap.set(phone, Date.now() + 60_000); // rate limit boshlanadi
+    this.sentMap.set(phone, Date.now() + 60_000);
     await this.sendOtpMessage(chatId, phone, code);
   }
 
@@ -177,13 +222,29 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
 
     const chatId = String(msg.chat.id);
 
-    // 1) Foydalanuvchi "📱 Telefon raqamni ulashish" tugmasini bosdi
+    // 1) Foydalanuvchi telefon raqamini ulashdi
     if (msg.contact) {
       const rawPhone = msg.contact.phone_number;
       const phone = this.normalizePhone(rawPhone);
 
-      const exists = await this.prisma.user.findFirst({ where: { phone } });
-      if (exists) {
+      const existingUser = await this.prisma.user.findFirst({ where: { phone } });
+
+      if (existingUser) {
+        // Driver bo'lsa — Driver Mini App tugmasi
+        if (existingUser.role === 'DRIVER') {
+          await this.storeChatId(phone, chatId);
+          await this.sendDriverAppButton(chatId, existingUser.name);
+          return;
+        }
+
+        // Client/do'kon bo'lsa — Customer Mini App tugmasi
+        if (existingUser.role === 'CLIENT') {
+          await this.storeChatId(phone, chatId);
+          await this.sendCustomerAppButton(chatId, existingUser.name);
+          return;
+        }
+
+        // Boshqa rol — allaqachon ro'yxatdan o'tgan
         await this.tgPost('sendMessage', {
           chat_id: chatId,
           text:
@@ -196,6 +257,7 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      // Yangi foydalanuvchi — OTP yuboriladi
       await this.storeChatId(phone, chatId);
       await this.generateAndSendOtp(chatId, phone);
       return;
@@ -203,19 +265,44 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
 
     const text: string = msg.text || '';
 
-    // 2) /start komandasi → klaviatura yuborish
+    // 2) /start komandasi
     if (text.startsWith('/start')) {
+      // Agar bu chatId allaqachon driver bo'lsa — to'g'ridan app button
+      const mapping = await this.prisma.telegramChatMapping.findFirst({ where: { chatId } });
+      if (mapping) {
+        const user = await this.prisma.user.findFirst({ where: { phone: mapping.phone } });
+        if (user?.role === 'DRIVER') {
+          await this.sendDriverAppButton(chatId, user.name);
+          return;
+        }
+        if (user?.role === 'CLIENT') {
+          await this.sendCustomerAppButton(chatId, user.name);
+          return;
+        }
+      }
+
+      // Yangi yoki boshqa foydalanuvchi — standart klaviatura
       await this.sendContactKeyboard(chatId);
       return;
     }
 
-    // 3) Fallback: foydalanuvchi qo'lda raqam yozsa
+    // 3) Fallback: qo'lda raqam yozilsa
     const phoneMatch = text.match(/(\+?998\d{9})/);
     if (phoneMatch) {
       const phone = this.normalizePhone(phoneMatch[1]);
 
-      const exists = await this.prisma.user.findFirst({ where: { phone } });
-      if (exists) {
+      const existingUser = await this.prisma.user.findFirst({ where: { phone } });
+      if (existingUser) {
+        if (existingUser.role === 'DRIVER') {
+          await this.storeChatId(phone, chatId);
+          await this.sendDriverAppButton(chatId, existingUser.name);
+          return;
+        }
+        if (existingUser.role === 'CLIENT') {
+          await this.storeChatId(phone, chatId);
+          await this.sendCustomerAppButton(chatId, existingUser.name);
+          return;
+        }
         await this.tgPost('sendMessage', {
           chat_id: chatId,
           text:
