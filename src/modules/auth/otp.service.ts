@@ -187,6 +187,15 @@ export class OtpService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // ─── Ro'yxatdan o'tgandan so'ng bot xabari ───────────────────────────────────
+
+  async notifyAfterRegistration(phone: string, name: string, role: 'CLIENT' | 'DRIVER'): Promise<void> {
+    const chatId = await this.getChatId(this.normalizePhone(phone));
+    if (!chatId) return;
+    if (role === 'CLIENT') await this.sendCustomerAppButton(chatId, name);
+    else if (role === 'DRIVER') await this.sendDriverAppButton(chatId, name);
+  }
+
   // ─── OTP yaratish va yuborish ─────────────────────────────────────────────────
 
   private async generateAndSendOtp(chatId: string, phone: string): Promise<void> {

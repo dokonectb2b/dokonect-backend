@@ -155,7 +155,16 @@ export class AuthService {
       throw new BadRequestException("Kod noto'g'ri yoki muddati tugagan");
     }
     const { code: _code, ...registerData } = dto;
-    return this.register(registerData as RegisterDto);
+    const result = await this.register(registerData as RegisterDto);
+
+    // Ro'yxatdan o'tgach bot orqali Mini App tugmasini yuborish
+    if (registerData.role === 'CLIENT' || registerData.role === 'DRIVER') {
+      this.otpService
+        .notifyAfterRegistration(registerData.phone, registerData.name, registerData.role as 'CLIENT' | 'DRIVER')
+        .catch(() => { /* bot xatosi asosiy javobni to'xtatmasin */ });
+    }
+
+    return result;
   }
 
   async refreshAccessToken(refreshToken: string) {
