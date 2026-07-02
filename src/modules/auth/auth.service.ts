@@ -216,8 +216,13 @@ export class AuthService {
 
     if (phone) {
       const normalizedPhone = this.normalizePhone(phone);
+      // Format-bardosh qidiruv: baza raqami har xil formatda saqlangan bo'lishi
+      // mumkin (masalan +998 siz), shuning uchun oxirgi 9 raqam bo'yicha ham izlaymiz
+      const last9 = phone.replace(/\D/g, '').slice(-9);
       user = await this.prisma.user.findFirst({
-        where: { phone: normalizedPhone },
+        where: last9.length === 9
+          ? { OR: [{ phone: normalizedPhone }, { phone: { endsWith: last9 } }] }
+          : { phone: normalizedPhone },
         include: { client: true, distributor: true, driver: true },
       });
       if (!user) throw new NotFoundException('Bu raqam tizimda topilmadi');
@@ -225,10 +230,12 @@ export class AuthService {
         const label = requiredRole === 'DRIVER' ? 'haydovchi' : 'do\'kon';
         throw new UnauthorizedException(`Bu raqam ${label} sifatida ro'yxatdan o'tmagan`);
       }
+      // Mapping'ni bazadagi haqiqiy raqam bilan saqlaymiz (telefonsiz kirishda
+      // shu raqam bo'yicha qayta izlanadi)
       await this.prisma.telegramChatMapping.upsert({
-        where:  { phone: normalizedPhone },
+        where:  { phone: user.phone },
         update: { chatId },
-        create: { phone: normalizedPhone, chatId },
+        create: { phone: user.phone, chatId },
       });
     } else {
       const mapping = await this.prisma.telegramChatMapping.findFirst({ where: { chatId } });

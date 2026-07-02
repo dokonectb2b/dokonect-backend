@@ -494,6 +494,11 @@ export class DistributorService {
     };
   }
 
+  private normalizePhone(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    return digits.startsWith('998') ? `+${digits}` : `+998${digits}`;
+  }
+
   async createDriver(distributorId: string | null, data: any) {
     // Validate required fields
     if (!data.name || !data.phone) {
@@ -504,9 +509,13 @@ export class DistributorService {
       throw new Error('Parol kamida 6 ta belgidan iborat bo\'lishi kerak');
     }
 
+    // Telefon raqamni yagona formatga keltiramiz (+998XXXXXXXXX) — Mini App
+    // kirishidagi normalizePhone bilan mos bo'lishi uchun
+    const normalizedPhone = this.normalizePhone(data.phone);
+
     // Check if phone already exists
     const existingUser = await this.prisma.user.findUnique({
-      where: { phone: data.phone },
+      where: { phone: normalizedPhone },
       include: { driver: true },
     });
 
@@ -521,7 +530,7 @@ export class DistributorService {
       const user = await this.prisma.user.create({
         data: {
           name: data.name,
-          phone: data.phone,
+          phone: normalizedPhone,
           password: hashedPassword,
           role: 'DRIVER',
           status: 'ACTIVE',
