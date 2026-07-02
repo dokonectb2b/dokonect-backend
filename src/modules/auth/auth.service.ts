@@ -240,8 +240,12 @@ export class AuthService {
     } else {
       const mapping = await this.prisma.telegramChatMapping.findFirst({ where: { chatId } });
       if (!mapping) return { needsPhone: true };
+      // Format-bardosh: mapping va user telefonlari har xil formatda bo'lishi mumkin
+      const last9 = mapping.phone.replace(/\D/g, '').slice(-9);
       user = await this.prisma.user.findFirst({
-        where: { phone: mapping.phone },
+        where: last9.length === 9
+          ? { OR: [{ phone: mapping.phone }, { phone: { endsWith: last9 } }] }
+          : { phone: mapping.phone },
         include: { client: true, distributor: true, driver: true },
       });
       if (!user || user.role !== requiredRole) return { needsPhone: true };
