@@ -546,6 +546,9 @@ export class DistributorService {
         vehicleNumber: data.plateNumber || '',
         licenseNumber: data.licenseNumber || '',
       };
+      if (data.commission !== undefined && data.commission !== '' && data.commission !== null) {
+        driverData.commission = Number(data.commission);
+      }
 
       // Distribyutorga bog'lash
       if (distributorId) {
@@ -600,6 +603,11 @@ export class DistributorService {
         vehicleType: data.vehicleType,
         vehicleNumber: data.plateNumber,
         status: data.status,
+        // Komissiya: bo'sh/null → umumiy foizga qaytadi, son → shaxsiy foiz
+        commission:
+          data.commission === undefined
+            ? undefined
+            : (data.commission === '' || data.commission === null ? null : Number(data.commission)),
       },
       include: { user: true },
     });

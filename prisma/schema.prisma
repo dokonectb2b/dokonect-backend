@@ -110,6 +110,7 @@ model Driver {
   currentLng      Float?
   licensePhoto    String?
   passportNumber  String?
+  commission      Float?           // Haydovchi shaxsiy komissiyasi (%). null = distribyutor umumiy foizi
   status          DriverStatus     @default(ACTIVE)
   deliveries      Delivery[]
   ratings         DeliveryRating[]

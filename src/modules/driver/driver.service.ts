@@ -155,13 +155,19 @@ export class DriverService {
         where: { orderId, driverId },
       });
       if (!existingEarning) {
-        // Komissiya foizini distribyutor sozlamasidan olamiz (default 10%)
-        const distributor = await this.prisma.distributor.findUnique({
-          where: { id: order.distributorId },
-          select: { driverCommission: true },
-        });
-        const rate = (distributor?.driverCommission ?? 10) / 100;
-        const baseAmount = order.totalAmount * rate;
+        // Komissiya foizi: haydovchi shaxsiy foizi → distribyutor umumiy foizi → 10%
+        const [driverRow, distributor] = await Promise.all([
+          this.prisma.driver.findUnique({
+            where: { id: driverId },
+            select: { commission: true },
+          }),
+          this.prisma.distributor.findUnique({
+            where: { id: order.distributorId },
+            select: { driverCommission: true },
+          }),
+        ]);
+        const pct = driverRow?.commission ?? distributor?.driverCommission ?? 10;
+        const baseAmount = order.totalAmount * (pct / 100);
         await this.prisma.driverEarning.create({
           data: { driverId, orderId, amount: baseAmount },
         });
