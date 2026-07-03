@@ -79,6 +79,8 @@ model Distributor {
   rating          Float       @default(0)
   slug            String?     @unique
   totalReviews    Int         @default(0)
+  driverCommission Float      @default(10) // Haydovchi komissiyasi (%) — har yetkazishda buyurtma summasidan
+
   brands          Brand[]
   categories      Category[]
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -155,7 +155,13 @@ export class DriverService {
         where: { orderId, driverId },
       });
       if (!existingEarning) {
-        const baseAmount = order.totalAmount * 0.1; // 10% commission
+        // Komissiya foizini distribyutor sozlamasidan olamiz (default 10%)
+        const distributor = await this.prisma.distributor.findUnique({
+          where: { id: order.distributorId },
+          select: { driverCommission: true },
+        });
+        const rate = (distributor?.driverCommission ?? 10) / 100;
+        const baseAmount = order.totalAmount * rate;
         await this.prisma.driverEarning.create({
           data: { driverId, orderId, amount: baseAmount },
         });

@@ -100,8 +100,8 @@ export class DistributorService {
       },
     });
 
-    // Update distributor
-    if (user.distributor && data.companyName) {
+    // Update distributor (undefined maydonlarni Prisma e'tiborsiz qoldiradi)
+    if (user.distributor) {
       await this.prisma.distributor.update({
         where: { id: user.distributor.id },
         data: {
@@ -109,6 +109,8 @@ export class DistributorService {
           address: data.address,
           phone: data.phone,
           description: data.description,
+          driverCommission:
+            data.driverCommission !== undefined ? Number(data.driverCommission) : undefined,
         },
       });
     }
