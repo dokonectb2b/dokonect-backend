@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -13,19 +13,24 @@ export class StorageService {
 
   constructor(private config: ConfigService) {
     this.bucket = this.config.get<string>('R2_BUCKET_NAME');
-    this.publicUrl = this.config.get<string>('R2_PUBLIC_URL').replace(/\/$/, '');
+    const publicUrl = this.config.get<string>('R2_PUBLIC_URL');
+    const endpoint = this.config.get<string>('R2_ENDPOINT');
+    const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID');
+    const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY');
 
+    if (!this.bucket || !publicUrl || !endpoint || !accessKeyId || !secretAccessKey) return;
+
+    this.publicUrl = publicUrl.replace(/\/$/, '');
     this.s3 = new S3Client({
       region: 'auto',
-      endpoint: this.config.get<string>('R2_ENDPOINT'),
-      credentials: {
-        accessKeyId: this.config.get<string>('R2_ACCESS_KEY_ID'),
-        secretAccessKey: this.config.get<string>('R2_SECRET_ACCESS_KEY'),
-      },
+      endpoint,
+      credentials: { accessKeyId, secretAccessKey },
     });
   }
 
   async uploadImage(file: Express.Multer.File, folder: string = 'dokonect'): Promise<string> {
+    if (!this.s3) throw new ServiceUnavailableException('Image storage is unavailable');
+
     const ext = path.extname(file.originalname) || '.jpg';
     const key = `${folder}/${randomUUID()}${ext}`;
 
@@ -48,6 +53,8 @@ export class StorageService {
   }
 
   async deleteImage(publicId: string): Promise<void> {
+    if (!this.s3) throw new ServiceUnavailableException('Image storage is unavailable');
+
     // publicId sifatida to'liq URL yoki faqat key qabul qiladi
     const key = publicId.startsWith('http')
       ? publicId.replace(`${this.publicUrl}/`, '')
